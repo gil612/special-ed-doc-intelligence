@@ -47,7 +47,19 @@ export async function POST(request: Request): Promise<Response> {
     return Response.json({ error: "unauthorized" }, { status: 401 });
   }
 
-  const formData = await request.formData();
+  // @cloudflare/next-on-pages wraps the incoming Request in a way that
+  // breaks the native FormData parser's internal `this` binding, throwing
+  // "Illegal invocation" when calling request.formData() directly.
+  // Reconstructing a genuinely native Request from its parts works around it.
+  const nativeRequest = new Request(request.url, {
+    method: request.method,
+    headers: request.headers,
+    body: request.body,
+    // @ts-expect-error - duplex is required by the fetch spec for streaming
+    // bodies but missing from TypeScript's RequestInit type.
+    duplex: "half",
+  });
+  const formData = await nativeRequest.formData();
   const file = formData.get("file");
 
   if (!(file instanceof File) || file.type !== "application/pdf") {
