@@ -1369,8 +1369,11 @@ export async function POST(request: Request): Promise<Response> {
   // SPEC.md/CLAUDE.md: "REST API requires an X-API-Key header" is a stated
   // hard requirement covering every endpoint, not just the read endpoints —
   // upload triggers billable Gemini calls and storage writes, so it must
-  // not be left open on a public deployment.
-  if (request.headers.get("X-API-Key") !== env.DOCUMENTS_API_KEY) {
+  // not be left open on a public deployment. The `!env.DOCUMENTS_API_KEY`
+  // check matters on its own: without it, a misconfigured empty-string env
+  // var would make an equally-empty `X-API-Key` header pass the `!==` check,
+  // bypassing auth entirely rather than failing closed.
+  if (!env.DOCUMENTS_API_KEY || request.headers.get("X-API-Key") !== env.DOCUMENTS_API_KEY) {
     return Response.json({ error: "unauthorized" }, { status: 401 });
   }
 
