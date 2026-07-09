@@ -1084,7 +1084,17 @@ git commit -m "Add Gemini extraction call and Supabase helpers (lib/gemini.ts, l
   }
   async function processDocument(documentId: string, deps: ProcessDocumentDeps): Promise<void>
   ```
-  Consumed by `app/api/upload/route.ts` (Task 8).
+  Consumed by `app/api/upload/route.ts` (Task 8). Note the contract: this
+  Promise resolves (never rejects) for any failure up through extraction
+  (fetch/redact/Gemini/validation) — those are reported via
+  `updateDocumentStatus("failed", ...)` + a failed webhook. But if a step
+  *after* a successful extraction throws (inserting the row, marking it
+  done, or sending the success webhook), the Promise **rejects** instead —
+  deliberately not reported as "failed", since a valid extraction already
+  exists and mislabeling it would be worse than an unhandled rejection.
+  Task 8 passes this Promise to `context.waitUntil`, which is one of the
+  cases where an unhandled rejection is acceptable: Cloudflare logs it
+  without crashing the Worker or the already-sent HTTP response.
 
 - [ ] **Step 1: Write the failing test — `lib/process-document.test.ts`**
 
@@ -1181,6 +1191,19 @@ describe("processDocument", () => {
     expect(status).toBe("failed");
     expect(typeof errorMessage).toBe("string");
   });
+
+  it("does not report 'failed' if a post-extraction step throws (extraction already succeeded)", async () => {
+    const deps = buildDeps({
+      supabase: {
+        insertExtraction: vi.fn().mockRejectedValue(new Error("Supabase write failed")),
+        updateDocumentStatus: vi.fn().mockResolvedValue(undefined),
+      },
+    });
+
+    await expect(processDocument("doc-1", deps)).rejects.toThrow("Supabase write failed");
+    expect(deps.supabase.updateDocumentStatus).not.toHaveBeenCalled();
+    expect(deps.sendWebhook).not.toHaveBeenCalled();
+  });
 });
 ```
 
@@ -1210,20 +1233,14 @@ export interface ProcessDocumentDeps {
 }
 
 export async function processDocument(documentId: string, deps: ProcessDocumentDeps): Promise<void> {
+  // Only the extraction itself (fetch -> redact -> Gemini -> validate) is
+  // "did this document fail to extract." A failure here means there is no
+  // extraction to persist, so marking the document failed is correct.
+  let extraction: IEPExtraction;
   try {
     const rawText = await deps.fetchDocumentText();
     const { redactedText } = redactText(rawText);
-    const extraction = await extractIEP(redactedText, deps.geminiClient);
-
-    await deps.supabase.insertExtraction(extraction);
-    await deps.supabase.updateDocumentStatus("done");
-
-    const payload: WebhookPayload = {
-      document_id: documentId,
-      status: "done",
-      confidence: extraction.confidence,
-    };
-    await deps.sendWebhook(payload, deps.webhookUrl, deps.webhookSecret);
+    extraction = await extractIEP(redactedText, deps.geminiClient);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
 
@@ -1235,7 +1252,22 @@ export async function processDocument(documentId: string, deps: ProcessDocumentD
       error: message,
     };
     await deps.sendWebhook(payload, deps.webhookUrl, deps.webhookSecret);
+    return;
   }
+
+  // Deliberately outside the try/catch above: a valid extraction already
+  // exists at this point, so a transient failure persisting/announcing it
+  // (e.g. a Supabase or webhook hiccup) must not be reported as "failed" —
+  // that would overwrite a real result with a misleading status.
+  await deps.supabase.insertExtraction(extraction);
+  await deps.supabase.updateDocumentStatus("done");
+
+  const payload: WebhookPayload = {
+    document_id: documentId,
+    status: "done",
+    confidence: extraction.confidence,
+  };
+  await deps.sendWebhook(payload, deps.webhookUrl, deps.webhookSecret);
 }
 ```
 
