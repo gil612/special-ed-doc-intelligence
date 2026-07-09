@@ -1274,7 +1274,7 @@ export async function processDocument(documentId: string, deps: ProcessDocumentD
 - [ ] **Step 4: Run the test to verify it passes**
 
 Run: `npm test -- lib/process-document.test.ts`
-Expected: all 4 tests PASS.
+Expected: all 5 tests PASS.
 
 - [ ] **Step 5: Run the full test suite**
 
