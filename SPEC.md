@@ -40,13 +40,25 @@ class IEPExtraction(BaseModel):
 
 ## מודל נתונים (Supabase)
 
+מוגדר במלואו ב-`supabase/schema.sql`. תקציר:
+
 ```sql
-documents: id, storage_path (R2), status (processing/done/failed), uploaded_at
+documents: id, storage_path (R2 key), original_filename, status (processing/done/failed),
+           error_message, uploaded_at
 extractions: id, document_id (FK), student_id, school_year, disability_category,
              placement_type, weekly_support_hours, goals (jsonb), review_date,
              accommodations (jsonb), confidence, created_at
-student_identity_map: student_id, real_name_encrypted   -- טבלה נפרדת, הרשאות מוגבלות בלבד
+student_identity_map: student_id, real_name_encrypted   -- placeholder בלבד, לא נכתב אליו בפרויקט הזה
 ```
+
+**מודל הגישה:** כל הגישה ל-Supabase עוברת דרך שרת ה-Next.js עם
+`SUPABASE_SERVICE_ROLE_KEY` (המפתח הזה עוקף RLS). הדפדפן אינו פונה ל-Supabase
+ישירות. בהתאם, RLS מופעל על שלוש הטבלאות **בלי** policies מוגדרות — כלומר
+default-deny לתפקידי `anon`/`authenticated`, ו-RLS משמש כשכבת הגנה נוספת
+(defense-in-depth) ולא כמנגנון ההרשאה המרכזי.
+
+`error_message` (עמודה ב-`documents`) מאפשר לדשבורד להציג סיבת כשל למסמך
+שנכשל (למשל סרוק גרוע/שדה שגוי) — נדרש לבדיקת edge cases בשלב 5 של הפרויקט.
 
 ## זרימת המערכת
 
