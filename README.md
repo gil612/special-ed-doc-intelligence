@@ -134,8 +134,8 @@ See `SPEC.md` for the full data model and the mapping from the course's
 - [x] PII redaction layer (`redaction.py`)
 - [x] End-to-end extraction tested against a real sample document
 - [ ] Supabase schema
-- [ ] Upload endpoint (`app/api/upload/route.ts`)
-- [ ] Outgoing webhook (HMAC-signed completion notification)
+- [x] Upload endpoint (`app/api/upload/route.ts`)
+- [x] Outgoing webhook (HMAC-signed completion notification)
 - [ ] Dashboard UI
 - [ ] REST API read endpoints (`GET /api/documents`, `GET /api/documents/{id}`)
 - [ ] Deploy to Cloudflare Pages

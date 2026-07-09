@@ -75,7 +75,7 @@ Outgoing Webhook (HMAC-signed) → התראה לדשבורד/Telegram: "מסמך
 
 - [x] Pydantic Schema עם לפחות 6 שדות + `confidence`
 - [x] שכבת Redaction לפני קריאת Vertex AI
-- [ ] Upload endpoint + עיבוד אסינכרוני + Outgoing Webhook עם HMAC
+- [x] Upload endpoint + עיבוד אסינכרוני + Outgoing Webhook עם HMAC
 - [ ] תוצאות ב-Supabase, טבלת מיפוי זהות מופרדת
 - [ ] Dashboard: רשימה + פנל + Upload UI
 - [ ] REST API עם API Key Auth
