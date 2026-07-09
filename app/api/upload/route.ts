@@ -17,6 +17,7 @@ interface Env {
   SUPABASE_URL: string;
   SUPABASE_SERVICE_ROLE_KEY: string;
   GEMINI_API_KEY: string;
+  DOCUMENTS_API_KEY: string;
   WEBHOOK_URL?: string;
   WEBHOOK_SECRET?: string;
 }
@@ -34,6 +35,14 @@ declare global {
 
 export async function POST(request: Request): Promise<Response> {
   const { env, ctx } = getRequestContext();
+
+  // SPEC.md/CLAUDE.md: "REST API requires an X-API-Key header" is a stated
+  // hard requirement covering every endpoint, not just the read endpoints —
+  // upload triggers billable Gemini calls and storage writes, so it must
+  // not be left open on a public deployment.
+  if (request.headers.get("X-API-Key") !== env.DOCUMENTS_API_KEY) {
+    return Response.json({ error: "unauthorized" }, { status: 401 });
+  }
 
   const formData = await request.formData();
   const file = formData.get("file");
