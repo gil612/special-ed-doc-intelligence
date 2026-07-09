@@ -43,11 +43,18 @@ export async function POST(request: Request): Promise<Response> {
   }
 
   const fileBuffer = await file.arrayBuffer();
-  const storagePath = `documents/${crypto.randomUUID()}.pdf`;
-  await env.DOCS_BUCKET.put(storagePath, fileBuffer);
-
   const supabase = createSupabaseClient(env.SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY);
-  const documentId = await insertDocument(supabase, storagePath, file.name);
+
+  let storagePath: string;
+  let documentId: string;
+  try {
+    storagePath = `documents/${crypto.randomUUID()}.pdf`;
+    await env.DOCS_BUCKET.put(storagePath, fileBuffer);
+    documentId = await insertDocument(supabase, storagePath, file.name);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return Response.json({ error: `failed to store document: ${message}` }, { status: 503 });
+  }
 
   ctx.waitUntil(
     processDocument(documentId, {
