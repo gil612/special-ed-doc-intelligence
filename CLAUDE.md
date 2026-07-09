@@ -5,8 +5,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Project
 
 AI document-intelligence service that extracts structured data from Israeli
-special-education documents (IEP / ועדת שילוב decisions) using Vertex AI
-(Gemini) Structured Output. Capstone project for the TovTech AI Engineer
+special-education documents (IEP / ועדת שילוב decisions) using the Gemini
+API's Structured Output. Capstone project for the TovTech AI Engineer
 course.
 
 The course template is "Domain 1: legal/contract documents." This project
@@ -23,9 +23,14 @@ live.
 
 ## Status
 
-Nothing is implemented yet (see the `## Status` checklist in `README.md`
-and the `## Checklist` in `SPEC.md`). Both checklists describe the same
-build; keep them in sync rather than tracking progress in only one.
+Done: `IEPExtraction` schema + validation, PII redaction layer, and
+end-to-end extraction tested against a sample document — all in the
+Python reference scripts (`iep_schema.py`, `redaction.py`), plus the
+Supabase schema (`supabase/schema.sql`). Not yet built: the Next.js app
+itself (no `package.json` exists yet), upload endpoint, webhook, dashboard,
+REST API, deploy. See the `## Status` checklist in `README.md` and the
+`## Checklist` in `SPEC.md` — keep both in sync rather than tracking
+progress in only one.
 
 ## Tech stack
 
@@ -33,43 +38,56 @@ build; keep them in sync rather than tracking progress in only one.
 |---|---|
 | Frontend / Dashboard | Next.js + Tailwind |
 | API | Next.js API Routes, API-Key auth |
-| File storage | Cloudflare R2 |
+| Deploy | Cloudflare Pages (`@cloudflare/next-on-pages`) |
+| File storage | Cloudflare R2 (native binding, not access keys) |
 | Database | Supabase (Postgres) |
-| AI extraction | Google Vertex AI — Gemini 2.5 Flash, Structured Output |
-| Validation | Pydantic |
-| Processing worker | Python |
-| Deploy target | Cloudflare Pages |
+| AI extraction | Google Gemini API — gemini-2.5-flash, Structured Output (Developer API key; see note below) |
+| Validation | Zod (production) / Pydantic (local reference scripts) |
+| Processing | TypeScript, inside Next.js API routes (Cloudflare Workers runtime) |
+
+**Gemini Developer API, not Vertex AI:** Vertex AI's service-account OAuth
+doesn't run natively on the Workers edge runtime, so production auth is a
+Gemini API key instead. Same model, same Structured Output support,
+different product/billing line than the course brief's Vertex AI example —
+intentional, documented trade-off, not an oversight.
 
 ## Architecture
 
 ```
 POST /api/upload (PDF)
   → Cloudflare R2 (file storage), create document row (status=processing), return immediately
-  → background worker:
-      1. text extraction (pypdf)
-      2. PII redaction (regex/NER: names, national ID, phone, email) — BEFORE any Vertex AI call
-      3. Vertex AI (gemini-2.5-flash), Structured Output → IEPExtraction (Pydantic)
-      4. persist to Supabase `extractions`, set status=done
-  → outgoing webhook (HMAC-signed): notifies dashboard/Telegram with confidence score
+  → context.waitUntil(...) continues processing in the same Worker invocation:
+      1. text extraction (unpdf)
+      2. PII redaction (regex: names, national ID, phone, email) — BEFORE any Gemini call
+      3. Gemini API (gemini-2.5-flash), Structured Output → IEPExtraction (Zod)
+      4. persist to Supabase `extractions`, set status=done (or failed + error_message)
+  → outgoing webhook (HMAC-signed) to WEBHOOK_URL if configured, with confidence score
 ```
+
+There is no separate backend service — everything above runs inside the
+Cloudflare Worker behind the Next.js API route. `iep_schema.py` and
+`redaction.py` at the repo root are the local reference implementation
+(used to prototype the schema/prompt without deploying); the production
+path is a TypeScript port of that same logic, not a call into Python.
 
 Planned layout (per `README.md`):
 
 ```
-/app/api/upload/route.ts   upload endpoint (R2 + Supabase + triggers worker)
-/processing/process_document.py   background worker: download, extract, validate, persist
-/processing/iep_schema.py         Pydantic schema (IEPExtraction) + extraction pipeline
-/processing/redaction.py          PII redaction layer
-/supabase/schema.sql              documents / extractions / student_identity_map + RLS
+/app/api/upload/route.ts   upload endpoint (R2 + Supabase + triggers processing)
+/lib/redact.ts             PII redaction layer (TS port of redaction.py)
+/lib/extraction.ts         Zod schema (IEPExtraction) + Gemini call + validation
+/lib/webhook.ts            HMAC-signed outgoing webhook
+/supabase/schema.sql       documents / extractions / student_identity_map + RLS
 ```
 
 ## Security & privacy conventions
 
 These are hard requirements from `SPEC.md`, not stylistic preferences:
 
-- Redaction (`processing/redaction.py`) must run on extracted text **before**
-  it is sent to Vertex AI — Vertex AI is an external provider and must never
-  see a real name or national ID.
+- Redaction (`lib/redact.ts` in production, `redaction.py` for local
+  reference) must run on extracted text **before** it is sent to the
+  Gemini API — an external provider that must never see a real name or
+  national ID.
 - `student_id` is the only identifier written to `extractions`. Real-identity
   mapping lives only in `student_identity_map`, a separate table with
   restricted access (no open RLS policy). Never join or denormalize real
@@ -82,33 +100,30 @@ These are hard requirements from `SPEC.md`, not stylistic preferences:
 ## Environment variables (`.env.local`, never committed)
 
 ```
-GCP_PROJECT_ID=
-R2_ACCOUNT_ID=
-R2_ACCESS_KEY_ID=
-R2_SECRET_ACCESS_KEY=
-R2_BUCKET_NAME=
+GEMINI_API_KEY=
 SUPABASE_URL=
 SUPABASE_SERVICE_ROLE_KEY=
 DOCUMENTS_API_KEY=
+WEBHOOK_URL=
 WEBHOOK_SECRET=
 ```
+
+R2 is configured as a binding in `wrangler.toml`, not via env vars.
 
 ## Commands
 
 ```bash
 # install
 npm install
-pip install -r requirements.txt   # pydantic, pypdf, google-genai, boto3, supabase
 
-# Google Cloud auth (local dev)
-gcloud auth application-default login
-gcloud services enable aiplatform.googleapis.com
+# optional, only for the local reference scripts (iep_schema.py, redaction.py)
+pip install -r requirements.txt
 
 # database
 # run supabase/schema.sql in the Supabase SQL editor, or: supabase db push
 
-# run the extraction pipeline directly (no web server needed)
-python processing/iep_schema.py path/to/document.pdf
+# run the local reference pipeline directly (no web server needed)
+python iep_schema.py path/to/document.pdf
 ```
 
 No test suite, lint config, or CI build step exists yet beyond the Claude
