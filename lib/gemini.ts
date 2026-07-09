@@ -30,7 +30,11 @@ export function createGeminiClient(apiKey: string): GeminiClient {
   return {
     async extract(redactedText: string): Promise<unknown> {
       const response = await ai.models.generateContent({
-        model: "gemini-2.5-flash",
+        // "gemini-2.5-flash" is listed by the API but rejects generateContent
+        // calls with a 404 ("no longer available"). "gemini-flash-latest" is
+        // Google's stable alias that always resolves to the current
+        // recommended flash-tier model, avoiding this class of breakage.
+        model: "gemini-flash-latest",
         contents: buildExtractionPrompt(redactedText),
         config: {
           responseMimeType: "application/json",
