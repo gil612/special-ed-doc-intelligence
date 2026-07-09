@@ -22,6 +22,11 @@
 
 ## Pydantic Schema
 
+זו סכימת ה-reference (מקומית, ב-`iep_schema.py`) שעליה מבוססת הסכימה
+בפועל. ב-production הסכימה מיושמת כ-Zod (TypeScript) — ראו הערת ה-runtime
+ב-"זרימת המערכת" למטה — עם אותם שדות ואותם validators (דחיית `student_id`
+שנראה כשם אמיתי, נרמול תאריך DD/MM/YYYY ל-ISO).
+
 ```python
 from pydantic import BaseModel, Field
 from datetime import date
@@ -40,32 +45,56 @@ class IEPExtraction(BaseModel):
 
 ## מודל נתונים (Supabase)
 
+מוגדר במלואו ב-`supabase/schema.sql`. תקציר:
+
 ```sql
-documents: id, storage_path (R2), status (processing/done/failed), uploaded_at
+documents: id, storage_path (R2 key), original_filename, status (processing/done/failed),
+           error_message, uploaded_at
 extractions: id, document_id (FK), student_id, school_year, disability_category,
              placement_type, weekly_support_hours, goals (jsonb), review_date,
              accommodations (jsonb), confidence, created_at
-student_identity_map: student_id, real_name_encrypted   -- טבלה נפרדת, הרשאות מוגבלות בלבד
+student_identity_map: student_id, real_name_encrypted   -- placeholder בלבד, לא נכתב אליו בפרויקט הזה
 ```
+
+**מודל הגישה:** כל הגישה ל-Supabase עוברת דרך שרת ה-Next.js עם
+`SUPABASE_SERVICE_ROLE_KEY` (המפתח הזה עוקף RLS). הדפדפן אינו פונה ל-Supabase
+ישירות. בהתאם, RLS מופעל על שלוש הטבלאות **בלי** policies מוגדרות — כלומר
+default-deny לתפקידי `anon`/`authenticated`, ו-RLS משמש כשכבת הגנה נוספת
+(defense-in-depth) ולא כמנגנון ההרשאה המרכזי.
+
+`error_message` (עמודה ב-`documents`) מאפשר לדשבורד להציג סיבת כשל למסמך
+שנכשל (למשל סרוק גרוע/שדה שגוי) — נדרש לבדיקת edge cases בשלב 5 של הפרויקט.
 
 ## זרימת המערכת
 
+**Runtime:** הכל רץ בתוך Next.js API route יחיד על Cloudflare Workers
+(דרך `@cloudflare/next-on-pages`) — אין שירות backend נפרד. Workers לא
+מריצים Python, כך שה-pipeline ב-production הוא port ל-TypeScript של
+הלוגיקה שפותחה ב-`iep_schema.py`/`redaction.py`; שני קבצי הפייתון האלו
+נשארים בריפו כ-reference implementation מקומי בלבד (עיצוב סכימה/פרומפט
+בלי להריץ deploy), ולא כמה שרץ בפועל.
+
+**AI provider:** Gemini Developer API (מפתח API), **לא** Vertex AI —
+האימות של Vertex AI מבוסס service-account OAuth שלא רץ באופן טבעי על
+Workers edge runtime. אותו מודל (`gemini-2.5-flash`) ואותה תמיכת Structured
+Output; ההבדל הוא קו המוצר/חיוב ב-Google Cloud, לא היכולת.
+
 ```
 POST /api/upload (PDF/סרוק)
-    ↓ שומר קובץ ב-Cloudflare R2, יוצר document_id, מחזיר מיד (status=processing)
+    ↓ שומר קובץ ב-Cloudflare R2 (native binding), יוצר document_id, מחזיר מיד (status=processing)
     ↓
-Background job:
-    1. חילוץ טקסט מהמסמך
-    2. שכבת Redaction — הסרת שם מלא/ת.ז. לפני שליחה ל-Vertex AI (regex/NER)
-    3. Vertex AI (gemini-2.5-flash) — Structured Output לפי IEPExtraction
-    4. שמירת התוצאה ב-Supabase (extractions), עדכון status=done
+context.waitUntil(...) — ממשיך לרוץ באותה Worker invocation:
+    1. חילוץ טקסט מהמסמך (unpdf)
+    2. שכבת Redaction — הסרת שם מלא/ת.ז. לפני שליחה ל-Gemini API (regex)
+    3. Gemini API (gemini-2.5-flash) — Structured Output לפי IEPExtraction (Zod)
+    4. שמירת התוצאה ב-Supabase (extractions), עדכון status=done (או failed + error_message)
     ↓
-Outgoing Webhook (HMAC-signed) → התראה לדשבורד/Telegram: "מסמך X עובד, confidence: 0.87"
+Outgoing Webhook (HMAC-signed, ל-WEBHOOK_URL אם מוגדר) → "מסמך X עובד, confidence: 0.87"
 ```
 
 ## דרישות אבטחה ופרטיות
 
-- שם מלא/ת.ז. **אינם** נשלחים ל-Vertex AI (ספק חיצוני) — Redaction חובה לפני הקריאה.
+- שם מלא/ת.ז. **אינם** נשלחים ל-Gemini API (ספק חיצוני) — Redaction חובה לפני הקריאה.
 - `student_id` הוא המזהה היחיד המשמש בטבלת `extractions`; המיפוי לזהות אמיתית
   מנותק בטבלה נפרדת עם הרשאות מחמירות.
 - Webhook יוצא חתום ב-HMAC.
@@ -74,7 +103,7 @@ Outgoing Webhook (HMAC-signed) → התראה לדשבורד/Telegram: "מסמך
 ## Checklist עדכני (בהתאם למסמך הקורס, פרויקט ב')
 
 - [x] Pydantic Schema עם לפחות 6 שדות + `confidence`
-- [x] שכבת Redaction לפני קריאת Vertex AI
+- [x] שכבת Redaction לפני קריאת ה-AI provider
 - [x] Upload endpoint + עיבוד אסינכרוני + Outgoing Webhook עם HMAC
 - [ ] תוצאות ב-Supabase, טבלת מיפוי זהות מופרדת
 - [ ] Dashboard: רשימה + פנל + Upload UI

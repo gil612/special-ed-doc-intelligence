@@ -2,8 +2,8 @@
 
 AI-powered document intelligence service that extracts structured data from
 Israeli special-education documents (IEPs / inclusion-committee decisions —
-תח"י / ועדת שילוב) using Google Vertex AI (Gemini) Structured Output, with a
-built-in PII redaction layer and Pydantic schema validation.
+תח"י / ועדת שילוב) using the Gemini API's Structured Output, with a
+built-in PII redaction layer and schema validation.
 
 Built as the final capstone project for the TovTech AI Engineer course.
 
@@ -17,14 +17,21 @@ to the external AI provider.
 
 ```
 PDF upload
-  → Cloudflare R2 (file storage)
-  → text extraction (pypdf)
+  → Cloudflare R2 (file storage, native Worker binding)
+  → text extraction (unpdf)
   → PII redaction (names / national ID / phone / email stripped)
-  → Vertex AI / Gemini (Structured Output)
-  → Pydantic validation
+  → Gemini API (gemini-2.5-flash, Structured Output)
+  → Zod validation
   → Supabase (structured result)
   → outgoing webhook (HMAC-signed, on completion)
 ```
+
+Processing runs inside the same Next.js API route (Cloudflare Workers
+runtime, via `context.waitUntil`) — there is no separate backend service.
+Workers can't run Python, so this is a TypeScript port of the logic
+originally prototyped in `iep_schema.py`/`redaction.py`; those two files
+stay in the repo as the local reference implementation (schema/prompt
+design, quick iteration without deploying), not as what runs in production.
 
 ## Tech stack
 
@@ -32,23 +39,33 @@ PDF upload
 |---|---|
 | Frontend / Dashboard | Next.js + Tailwind |
 | API | Next.js API Routes, API-Key auth |
-| File storage | Cloudflare R2 |
+| Deploy | Cloudflare Pages (`@cloudflare/next-on-pages`) |
+| File storage | Cloudflare R2 (native binding) |
 | Database | Supabase (Postgres) |
-| AI extraction | Google Vertex AI — Gemini 2.5 Flash, Structured Output |
-| Validation | Pydantic |
-| Processing worker | Python |
+| AI extraction | Google Gemini API — gemini-2.5-flash, Structured Output (Developer API key, not Vertex AI — see note below) |
+| Validation | Zod (production) / Pydantic (local reference scripts) |
+| Processing | TypeScript, inside Next.js API routes (Cloudflare Workers runtime) |
+
+**Why Gemini Developer API and not Vertex AI:** Vertex AI's auth is
+service-account OAuth, which doesn't run natively on the Workers edge
+runtime. The Gemini Developer API (an API key in a header) gives the same
+model and Structured Output support and is trivially edge-compatible, at
+the cost of a different billing/product line than the course brief's
+Vertex AI example.
 
 ## Project structure
 
 ```
 /app                      → Next.js app (Dashboard + API Routes)
-  /api/upload/route.ts    → upload endpoint (R2 + Supabase + triggers worker)
-/processing
-  process_document.py     → background worker: download, extract, validate, persist
-  iep_schema.py           → Pydantic schema (IEPExtraction) + extraction pipeline
-  redaction.py            → PII redaction layer (names, national ID, phone, email)
+  /api/upload/route.ts    → upload endpoint (R2 + Supabase + triggers processing)
+/lib
+  redact.ts               → PII redaction layer (TS port of redaction.py)
+  extraction.ts           → Zod schema (IEPExtraction) + Gemini call + validation
+  webhook.ts              → HMAC-signed outgoing webhook
 /supabase
   schema.sql              → documents / extractions / student_identity_map tables + RLS
+iep_schema.py              → local reference implementation (schema/prompt prototyping only)
+redaction.py               → local reference implementation (schema/prompt prototyping only)
 SPEC.md                   → full data model, domain-field mapping, security requirements
 CLAUDE.md                 → tech stack + coding conventions for Claude Code
 README.md                 → this file
@@ -57,22 +74,16 @@ README.md                 → this file
 ## Setup
 
 ### Prerequisites
-- Node.js 18+, Python 3.11+
-- A Google Cloud project with the Vertex AI API enabled and billing active
+- Node.js 18+ (Python 3.11+ only if running the local reference scripts)
+- A Cloudflare account (Pages + R2 bucket)
+- A Gemini API key ([AI Studio](https://aistudio.google.com/apikey))
 - A Supabase project
-- A Cloudflare R2 bucket
 
 ### Environment variables (`.env.local` — never commit this file)
 
 ```
-# Google Cloud / Vertex AI
-GCP_PROJECT_ID=
-
-# Cloudflare R2
-R2_ACCOUNT_ID=
-R2_ACCESS_KEY_ID=
-R2_SECRET_ACCESS_KEY=
-R2_BUCKET_NAME=
+# Gemini API
+GEMINI_API_KEY=
 
 # Supabase
 SUPABASE_URL=
@@ -81,42 +92,38 @@ SUPABASE_SERVICE_ROLE_KEY=
 # REST API auth
 DOCUMENTS_API_KEY=
 
-# Outgoing webhook
+# Outgoing webhook (WEBHOOK_URL optional — skipped if unset)
+WEBHOOK_URL=
 WEBHOOK_SECRET=
 ```
+
+R2 is accessed via a native Wrangler binding, not access keys — configure
+the bucket name in `wrangler.toml`, not `.env.local`.
 
 ### Install
 
 ```bash
-# Node side
 npm install
 
-# Python side
-pip install -r requirements.txt   # pydantic, pypdf, google-genai, boto3, supabase
-```
-
-### Google Cloud auth (local development)
-
-```bash
-gcloud auth application-default login
-gcloud services enable aiplatform.googleapis.com
+# optional, only for running the local reference scripts (iep_schema.py, redaction.py)
+pip install -r requirements.txt
 ```
 
 ### Database setup
 
 Run `supabase/schema.sql` in the Supabase SQL editor (or `supabase db push`).
 
-### Run the extraction pipeline directly (no web server needed)
+### Run the local reference pipeline directly (no web server needed)
 
 ```bash
-python processing/iep_schema.py path/to/document.pdf
+python iep_schema.py path/to/document.pdf
 ```
 
 ## Privacy & security notes
 
 - Full names and national ID numbers are stripped from document text
-  **before** it is sent to Vertex AI (an external provider) — see
-  `processing/redaction.py`.
+  **before** it is sent to the Gemini API (an external provider) — see
+  `lib/redact.ts` (production) / `redaction.py` (local reference).
 - `student_id` is the only identifier stored in `extractions`; any mapping
   back to a real identity lives in a separate, access-restricted
   `student_identity_map` table with no open Row Level Security policy.
@@ -133,7 +140,7 @@ See `SPEC.md` for the full data model and the mapping from the course's
 - [x] Schema + validation (`iep_schema.py`)
 - [x] PII redaction layer (`redaction.py`)
 - [x] End-to-end extraction tested against a real sample document
-- [ ] Supabase schema
+- [x] Supabase schema
 - [x] Upload endpoint (`app/api/upload/route.ts`)
 - [x] Outgoing webhook (HMAC-signed completion notification)
 - [ ] Dashboard UI
