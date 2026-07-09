@@ -24,6 +24,7 @@ This file gives you:
 from __future__ import annotations
 
 import json
+import re
 import sys
 from datetime import date
 from enum import Enum
@@ -84,6 +85,24 @@ class IEPExtraction(BaseModel):
     def zero_becomes_none(cls, v: Optional[float]) -> Optional[float]:
         # A model sometimes returns 0 instead of omitting the field - normalize it.
         return None if v == 0 else v
+
+    @field_validator("review_date", mode="before")
+    @classmethod
+    def parse_israeli_date_format(cls, v):
+        """
+        Source documents write dates as DD/MM/YYYY (or DD-MM-YYYY), and the
+        model sometimes echoes that format back verbatim instead of
+        converting to ISO-8601 - which Pydantic's default date parser
+        rejects. Normalize the common Israeli format here rather than
+        relying on the model to always comply with the prompt.
+        """
+        if not isinstance(v, str):
+            return v
+        match = re.match(r"^(\d{1,2})[/-](\d{1,2})[/-](\d{4})$", v.strip())
+        if match:
+            day, month, year = (int(g) for g in match.groups())
+            return date(year, month, day)
+        return v
 
 
 # ---------------------------------------------------------------------------
@@ -162,6 +181,12 @@ def validate_pdf(pdf_path: str) -> IEPExtraction:
 # ---------------------------------------------------------------------------
 
 if __name__ == "__main__":
+    # Extracted fields are Hebrew text; Windows consoles default stdout to a
+    # codepage (e.g. cp1252) that can't encode Hebrew, so force UTF-8 here
+    # rather than relying on the host's console configuration.
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8")
+
     if len(sys.argv) != 2:
         print("Usage: python iep_schema.py path/to/document.pdf")
         sys.exit(1)
