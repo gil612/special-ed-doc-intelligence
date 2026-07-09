@@ -18,6 +18,7 @@ lib/
 lib64/
 # Exception: include TypeScript source files in lib/
 !lib/*.ts
+!lib/*.test.ts
 parts/
 sdist/
 var/
