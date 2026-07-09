@@ -13,6 +13,7 @@
 - Runtime is the Cloudflare Workers edge runtime (`export const runtime = "edge"` on the route) — no Node-only APIs beyond what `nodejs_compat` provides.
 - AI provider is the **Gemini Developer API** (`GEMINI_API_KEY`, model `gemini-2.5-flash`) — **not** Vertex AI (see `CLAUDE.md`).
 - R2 is accessed via a native Wrangler binding named `DOCS_BUCKET` — never S3-style access keys.
+- Every endpoint (including upload, not just future read endpoints) requires an `X-API-Key` header matching `DOCUMENTS_API_KEY` — `SPEC.md`/`CLAUDE.md` state this as a hard requirement, and upload triggers billable Gemini calls, so it can't be left open on a public deployment.
 - Redaction MUST run on extracted document text before any Gemini call (`SPEC.md`, "דרישות אבטחה ופרטיות").
 - `student_id` must never be a value that looks like a real name — reject if it contains a space and doesn't start with `STU` (ported from `iep_schema.py`'s `reject_real_names`).
 - `review_date` must accept both ISO (`YYYY-MM-DD`) and Israeli `DD/MM/YYYY`/`DD-MM-YYYY` input, normalized to an ISO date **string** (not a `Date` object — avoids timezone bugs when round-tripping to Postgres `date`).
@@ -1299,7 +1300,7 @@ git commit -m "Add processDocument orchestration (lib/process-document.ts)"
 
 **Interfaces:**
 - Consumes: `insertDocument`, `createSupabaseClient`, `insertExtraction`, `updateDocumentStatus` (Task 6), `createGeminiClient` (Task 6), `extractPdfText` (Task 4), `processDocument` (Task 7), `sendWebhook` (Task 5).
-- Produces: the `POST /api/upload` HTTP contract — `202 { document_id: string, status: "processing" }` on success, `400 { error: string }` if the `file` field is missing/not a PDF.
+- Produces: the `POST /api/upload` HTTP contract — `202 { document_id: string, status: "processing" }` on success, `401 { error: "unauthorized" }` if the `X-API-Key` header doesn't match `DOCUMENTS_API_KEY`, `400 { error: string }` if the `file` field is missing/not a PDF.
 
 This task cannot be unit-tested in this sandbox: `getRequestContext()` (which exposes the R2 binding and `waitUntil`) only resolves inside an actual `@cloudflare/next-on-pages`-served request — there is no live Cloudflare account, R2 bucket, Supabase project, or Gemini key available here. Steps 5–6 below are manual verification to run once real credentials exist, not automated tests.
 
@@ -1349,6 +1350,7 @@ interface Env {
   SUPABASE_URL: string;
   SUPABASE_SERVICE_ROLE_KEY: string;
   GEMINI_API_KEY: string;
+  DOCUMENTS_API_KEY: string;
   WEBHOOK_URL?: string;
   WEBHOOK_SECRET?: string;
 }
@@ -1363,6 +1365,14 @@ declare global {
 
 export async function POST(request: Request): Promise<Response> {
   const { env, ctx } = getRequestContext();
+
+  // SPEC.md/CLAUDE.md: "REST API requires an X-API-Key header" is a stated
+  // hard requirement covering every endpoint, not just the read endpoints —
+  // upload triggers billable Gemini calls and storage writes, so it must
+  // not be left open on a public deployment.
+  if (request.headers.get("X-API-Key") !== env.DOCUMENTS_API_KEY) {
+    return Response.json({ error: "unauthorized" }, { status: 401 });
+  }
 
   const formData = await request.formData();
   const file = formData.get("file");
@@ -1422,10 +1432,20 @@ npx wrangler pages dev .vercel/output/static
 
 ```bash
 curl -i -X POST http://localhost:8788/api/upload \
+  -H "X-API-Key: $DOCUMENTS_API_KEY" \
   -F "file=@sample_iep_decision.pdf;type=application/pdf"
 ```
 
 Expected: HTTP `202` with a JSON body like `{"document_id":"<uuid>","status":"processing"}`. Then, after a few seconds (Gemini call + Supabase write), query the `documents` and `extractions` tables in the Supabase dashboard for that `document_id` and confirm `status` moved to `done` (or `failed` with a populated `error_message`) and the `extractions` row matches what `python iep_schema.py sample_iep_decision.pdf` produces for the same file.
+
+Also confirm the auth check rejects an unauthenticated request:
+
+```bash
+curl -i -X POST http://localhost:8788/api/upload \
+  -F "file=@sample_iep_decision.pdf;type=application/pdf"
+```
+
+Expected: HTTP `401` with `{"error":"unauthorized"}`, and no R2/Supabase writes.
 
 - [ ] **Step 7: Commit**
 
