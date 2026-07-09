@@ -32,6 +32,29 @@ describe("IEPExtractionSchema", () => {
     expect(() => IEPExtractionSchema.parse(validExtraction({ review_date: "not a date" }))).toThrow();
   });
 
+  it("rejects a calendar-invalid DD/MM/YYYY date (Feb 31st doesn't exist)", () => {
+    expect(() => IEPExtractionSchema.parse(validExtraction({ review_date: "31/02/2028" }))).toThrow(
+      /not a real calendar date/
+    );
+  });
+
+  it("rejects a calendar-invalid ISO date (nonsense month)", () => {
+    expect(() => IEPExtractionSchema.parse(validExtraction({ review_date: "2028-13-01" }))).toThrow(
+      /not a real calendar date/
+    );
+  });
+
+  it("accepts Feb 29th on a leap year", () => {
+    const result = IEPExtractionSchema.parse(validExtraction({ review_date: "29/02/2028" }));
+    expect(result.review_date).toBe("2028-02-29");
+  });
+
+  it("rejects Feb 29th on a non-leap year", () => {
+    expect(() => IEPExtractionSchema.parse(validExtraction({ review_date: "29/02/2027" }))).toThrow(
+      /not a real calendar date/
+    );
+  });
+
   it("normalizes weekly_support_hours of 0 to null", () => {
     const result = IEPExtractionSchema.parse(validExtraction({ weekly_support_hours: 0 }));
     expect(result.weekly_support_hours).toBeNull();
