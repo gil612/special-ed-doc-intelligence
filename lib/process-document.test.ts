@@ -90,4 +90,17 @@ describe("processDocument", () => {
     expect(status).toBe("failed");
     expect(typeof errorMessage).toBe("string");
   });
+
+  it("does not report 'failed' if a post-extraction step throws (extraction already succeeded)", async () => {
+    const deps = buildDeps({
+      supabase: {
+        insertExtraction: vi.fn().mockRejectedValue(new Error("Supabase write failed")),
+        updateDocumentStatus: vi.fn().mockResolvedValue(undefined),
+      },
+    });
+
+    await expect(processDocument("doc-1", deps)).rejects.toThrow("Supabase write failed");
+    expect(deps.supabase.updateDocumentStatus).not.toHaveBeenCalled();
+    expect(deps.sendWebhook).not.toHaveBeenCalled();
+  });
 });

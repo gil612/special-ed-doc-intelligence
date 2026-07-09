@@ -16,20 +16,14 @@ export interface ProcessDocumentDeps {
 }
 
 export async function processDocument(documentId: string, deps: ProcessDocumentDeps): Promise<void> {
+  // Only the extraction itself (fetch -> redact -> Gemini -> validate) is
+  // "did this document fail to extract." A failure here means there is no
+  // extraction to persist, so marking the document failed is correct.
+  let extraction: IEPExtraction;
   try {
     const rawText = await deps.fetchDocumentText();
     const { redactedText } = redactText(rawText);
-    const extraction = await extractIEP(redactedText, deps.geminiClient);
-
-    await deps.supabase.insertExtraction(extraction);
-    await deps.supabase.updateDocumentStatus("done");
-
-    const payload: WebhookPayload = {
-      document_id: documentId,
-      status: "done",
-      confidence: extraction.confidence,
-    };
-    await deps.sendWebhook(payload, deps.webhookUrl, deps.webhookSecret);
+    extraction = await extractIEP(redactedText, deps.geminiClient);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
 
@@ -41,5 +35,20 @@ export async function processDocument(documentId: string, deps: ProcessDocumentD
       error: message,
     };
     await deps.sendWebhook(payload, deps.webhookUrl, deps.webhookSecret);
+    return;
   }
+
+  // Deliberately outside the try/catch above: a valid extraction already
+  // exists at this point, so a transient failure persisting/announcing it
+  // (e.g. a Supabase or webhook hiccup) must not be reported as "failed" —
+  // that would overwrite a real result with a misleading status.
+  await deps.supabase.insertExtraction(extraction);
+  await deps.supabase.updateDocumentStatus("done");
+
+  const payload: WebhookPayload = {
+    document_id: documentId,
+    status: "done",
+    confidence: extraction.confidence,
+  };
+  await deps.sendWebhook(payload, deps.webhookUrl, deps.webhookSecret);
 }
