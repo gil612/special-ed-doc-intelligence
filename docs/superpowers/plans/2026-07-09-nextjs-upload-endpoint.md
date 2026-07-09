@@ -1353,8 +1353,16 @@ interface Env {
   WEBHOOK_SECRET?: string;
 }
 
+// getRequestContext's single generic parameter types `cf`, not `env` — `env`
+// is always typed via the ambient global `CloudflareEnv` interface (see
+// @cloudflare/next-on-pages's README). Extending it here is how `env.DOCS_BUCKET`
+// etc. actually typecheck; `getRequestContext<{ Bindings: Env }>()` would not.
+declare global {
+  interface CloudflareEnv extends Env {}
+}
+
 export async function POST(request: Request): Promise<Response> {
-  const { env, ctx } = getRequestContext<{ Bindings: Env }>();
+  const { env, ctx } = getRequestContext();
 
   const formData = await request.formData();
   const file = formData.get("file");
@@ -1364,11 +1372,18 @@ export async function POST(request: Request): Promise<Response> {
   }
 
   const fileBuffer = await file.arrayBuffer();
-  const storagePath = `documents/${crypto.randomUUID()}.pdf`;
-  await env.DOCS_BUCKET.put(storagePath, fileBuffer);
-
   const supabase = createSupabaseClient(env.SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY);
-  const documentId = await insertDocument(supabase, storagePath, file.name);
+
+  let storagePath: string;
+  let documentId: string;
+  try {
+    storagePath = `documents/${crypto.randomUUID()}.pdf`;
+    await env.DOCS_BUCKET.put(storagePath, fileBuffer);
+    documentId = await insertDocument(supabase, storagePath, file.name);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return Response.json({ error: `failed to store document: ${message}` }, { status: 503 });
+  }
 
   ctx.waitUntil(
     processDocument(documentId, {
