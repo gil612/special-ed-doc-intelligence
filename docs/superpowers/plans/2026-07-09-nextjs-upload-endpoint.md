@@ -496,6 +496,29 @@ describe("IEPExtractionSchema", () => {
     expect(() => IEPExtractionSchema.parse(validExtraction({ review_date: "not a date" }))).toThrow();
   });
 
+  it("rejects a calendar-invalid DD/MM/YYYY date (Feb 31st doesn't exist)", () => {
+    expect(() => IEPExtractionSchema.parse(validExtraction({ review_date: "31/02/2028" }))).toThrow(
+      /not a real calendar date/
+    );
+  });
+
+  it("rejects a calendar-invalid ISO date (nonsense month)", () => {
+    expect(() => IEPExtractionSchema.parse(validExtraction({ review_date: "2028-13-01" }))).toThrow(
+      /not a real calendar date/
+    );
+  });
+
+  it("accepts Feb 29th on a leap year", () => {
+    const result = IEPExtractionSchema.parse(validExtraction({ review_date: "29/02/2028" }));
+    expect(result.review_date).toBe("2028-02-29");
+  });
+
+  it("rejects Feb 29th on a non-leap year", () => {
+    expect(() => IEPExtractionSchema.parse(validExtraction({ review_date: "29/02/2027" }))).toThrow(
+      /not a real calendar date/
+    );
+  });
+
   it("normalizes weekly_support_hours of 0 to null", () => {
     const result = IEPExtractionSchema.parse(validExtraction({ weekly_support_hours: 0 }));
     expect(result.weekly_support_hours).toBeNull();
@@ -576,13 +599,31 @@ function normalizeDateInput(value: unknown): unknown {
   return `${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`;
 }
 
+// Digit-shape regexes accept nonsense like "31/02/2028" or "99/99/2028" — this
+// catches that by round-tripping through a UTC Date construction, the same
+// way Python's date(year, month, day) constructor rejects invalid calendar
+// dates by raising ValueError.
+function isValidCalendarDate(isoDate: string): boolean {
+  const [year, month, day] = isoDate.split("-").map(Number);
+  const date = new Date(Date.UTC(year, month - 1, day));
+  return (
+    date.getUTCFullYear() === year &&
+    date.getUTCMonth() === month - 1 &&
+    date.getUTCDate() === day
+  );
+}
+
 // Ported from iep_schema.py's parse_israeli_date_format: source documents write
 // dates as DD/MM/YYYY, and the model sometimes echoes that back verbatim
 // instead of ISO-8601. Output stays a string (not Date) to avoid timezone
 // bugs when round-tripping to Postgres `date`.
 const reviewDateSchema = z.preprocess(
   normalizeDateInput,
-  z.string().regex(ISO_DATE_RE, "review_date must resolve to YYYY-MM-DD").nullable()
+  z
+    .string()
+    .regex(ISO_DATE_RE, "review_date must resolve to YYYY-MM-DD")
+    .refine(isValidCalendarDate, "review_date is not a real calendar date")
+    .nullable()
 );
 
 // Ported from iep_schema.py's zero_becomes_none: the model sometimes returns
