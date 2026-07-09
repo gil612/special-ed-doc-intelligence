@@ -28,9 +28,17 @@ describe("redactText", () => {
   });
 
   it("redacts an email address", () => {
-    const result = redactText("ניתן לפנות ל-parent@example.com לפרטים.");
-    expect(result.redactedText).toBe("ניתן לפנות ל-[REDACTED_EMAIL] לפרטים.");
+    const result = redactText("ניתן לפנות באימייל parent@example.com לפרטים.");
+    expect(result.redactedText).toBe("ניתן לפנות באימייל [REDACTED_EMAIL] לפרטים.");
     expect(result.matches).toEqual([{ kind: "email", original: "parent@example.com" }]);
+  });
+
+  it("fully redacts a hyphenated local part and a multi-label domain", () => {
+    const result = redactText("אפשר גם באימייל cohen-noa@school.education.co.il לתיאום.");
+    expect(result.redactedText).toBe("אפשר גם באימייל [REDACTED_EMAIL] לתיאום.");
+    expect(result.matches).toEqual([
+      { kind: "email", original: "cohen-noa@school.education.co.il" },
+    ]);
   });
 
   it("redacts an unlabeled free-text name gated on a known first name", () => {
