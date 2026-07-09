@@ -1521,3 +1521,34 @@ Leave `תוצאות ב-Supabase...` unchecked until Task 8's manual verification
 git add README.md SPEC.md
 git commit -m "Update status checklists: upload endpoint and webhook done"
 ```
+
+---
+
+## Postscript: post-deployment fixes (not reflected in the tasks above)
+
+Once actually deployed to production (after all 9 tasks and the final
+review were complete), two more real issues surfaced that no local test
+could catch, since they only reproduce under Cloudflare's live Workers
+runtime and live Gemini API:
+
+1. **`@cloudflare/next-on-pages` bug:** `request.formData()` threw
+   `TypeError: Illegal invocation` in production due to a bug in that
+   adapter's Request-wrapping layer. Migrated the whole deploy target from
+   `@cloudflare/next-on-pages` (Cloudflare Pages) to `@opennextjs/cloudflare`
+   (a plain Cloudflare Worker) — the actively maintained adapter Cloudflare
+   itself recommends. This changed `wrangler.toml` from Pages-style
+   (`pages_build_output_dir`) to Workers-style (`main` + `[assets]`),
+   `route.ts` from `getRequestContext()` to `getCloudflareContext()`, and
+   removed the per-route `export const runtime = "edge"` declaration (which
+   OpenNext doesn't use and which breaks its build).
+2. **`gemini-2.5-flash` rejected at inference time:** the model was still
+   listed by the Gemini API's models endpoint but returned a 404 ("no
+   longer available") when actually called. Switched to
+   `gemini-flash-latest`, Google's stable alias for the current
+   recommended flash-tier model.
+
+Live URL after these fixes: https://special-ed-doc-intelligence.gil612.workers.dev
+Verified end-to-end against the real sample PDF: upload → R2 storage →
+redaction → Gemini extraction → Zod validation → Supabase write, with
+`documents.status` correctly reaching `done` and a real `extractions` row
+landing with the expected fields.
