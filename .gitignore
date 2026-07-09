@@ -225,6 +225,7 @@ __marimo__/
 node_modules/
 .next/
 .vercel/
+.open-next/
 next-env.d.ts
 *.tsbuildinfo
 

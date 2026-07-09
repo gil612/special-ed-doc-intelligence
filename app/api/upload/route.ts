@@ -1,4 +1,4 @@
-import { getRequestContext } from "@cloudflare/next-on-pages";
+import { getCloudflareContext } from "@opennextjs/cloudflare";
 import { createGeminiClient } from "@/lib/gemini";
 import { extractPdfText } from "@/lib/pdf";
 import { processDocument } from "@/lib/process-document";
@@ -10,8 +10,6 @@ import {
 } from "@/lib/supabase";
 import { sendWebhook } from "@/lib/webhook";
 
-export const runtime = "edge";
-
 interface Env {
   DOCS_BUCKET: R2Bucket;
   SUPABASE_URL: string;
@@ -22,33 +20,15 @@ interface Env {
   WEBHOOK_SECRET?: string;
 }
 
-// `getRequestContext`'s `env` is typed via the ambient `CloudflareEnv`
-// interface (declared by @cloudflare/next-on-pages), not via a generic type
-// argument to `getRequestContext` itself — see
-// node_modules/@cloudflare/next-on-pages/dist/api/getRequestContext.d.ts and
-// its README ("the `env` object ... implements the `CloudflareEnv`
-// interface, add your binding types to such interface"). Augment it here so
-// `env` is correctly typed as `Env` at the call site below.
+// `getCloudflareContext`'s `env` is typed via the ambient `CloudflareEnv`
+// interface (declared by @opennextjs/cloudflare) - augment it here so `env`
+// is correctly typed as `Env` at the call site below.
 declare global {
   interface CloudflareEnv extends Env {}
 }
 
 export async function POST(request: Request): Promise<Response> {
-  try {
-    return await handlePost(request);
-  } catch (error) {
-    // TEMPORARY diagnostic wrapper: surface the real error in the response
-    // body instead of Cloudflare's generic crash page, since live log
-    // tailing has been unreliable for this deployment. Remove once the
-    // production 500 is diagnosed.
-    const message = error instanceof Error ? error.message : String(error);
-    const stack = error instanceof Error ? error.stack : undefined;
-    return Response.json({ debug_error: message, debug_stack: stack }, { status: 500 });
-  }
-}
-
-async function handlePost(request: Request): Promise<Response> {
-  const { env, ctx } = getRequestContext();
+  const { env, ctx } = getCloudflareContext();
 
   // SPEC.md/CLAUDE.md: "REST API requires an X-API-Key header" is a stated
   // hard requirement covering every endpoint, not just the read endpoints —
@@ -61,19 +41,7 @@ async function handlePost(request: Request): Promise<Response> {
     return Response.json({ error: "unauthorized" }, { status: 401 });
   }
 
-  // @cloudflare/next-on-pages wraps the incoming Request in a way that
-  // breaks the native FormData parser's internal `this` binding, throwing
-  // "Illegal invocation" when calling request.formData() directly.
-  // Reconstructing a genuinely native Request from its parts works around it.
-  const nativeRequest = new Request(request.url, {
-    method: request.method,
-    headers: request.headers,
-    body: request.body,
-    // @ts-expect-error - duplex is required by the fetch spec for streaming
-    // bodies but missing from TypeScript's RequestInit type.
-    duplex: "half",
-  });
-  const formData = await nativeRequest.formData();
+  const formData = await request.formData();
   const file = formData.get("file");
 
   if (!(file instanceof File) || file.type !== "application/pdf") {
