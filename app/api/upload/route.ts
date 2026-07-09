@@ -34,6 +34,20 @@ declare global {
 }
 
 export async function POST(request: Request): Promise<Response> {
+  try {
+    return await handlePost(request);
+  } catch (error) {
+    // TEMPORARY diagnostic wrapper: surface the real error in the response
+    // body instead of Cloudflare's generic crash page, since live log
+    // tailing has been unreliable for this deployment. Remove once the
+    // production 500 is diagnosed.
+    const message = error instanceof Error ? error.message : String(error);
+    const stack = error instanceof Error ? error.stack : undefined;
+    return Response.json({ debug_error: message, debug_stack: stack }, { status: 500 });
+  }
+}
+
+async function handlePost(request: Request): Promise<Response> {
   const { env, ctx } = getRequestContext();
 
   // SPEC.md/CLAUDE.md: "REST API requires an X-API-Key header" is a stated
