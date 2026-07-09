@@ -14,7 +14,7 @@ dist/
 downloads/
 eggs/
 .eggs/
-lib/
+lib/*
 lib64/
 # Exception: include TypeScript source files in lib/
 !lib/*.ts
