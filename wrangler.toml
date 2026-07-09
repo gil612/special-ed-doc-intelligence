@@ -6,3 +6,9 @@ pages_build_output_dir = ".vercel/output/static"
 [[r2_buckets]]
 binding = "DOCS_BUCKET"
 bucket_name = "special-ed-documents"
+
+[vars]
+# Not sensitive - Supabase project URLs are safe to expose (often used
+# client-side). The real secret is SUPABASE_SERVICE_ROLE_KEY, set as a
+# dashboard secret, not here.
+SUPABASE_URL = "https://fxkewejsbkcqnhzqwxfd.supabase.co"
