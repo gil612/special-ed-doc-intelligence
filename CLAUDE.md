@@ -38,10 +38,10 @@ progress in only one.
 |---|---|
 | Frontend / Dashboard | Next.js + Tailwind |
 | API | Next.js API Routes, API-Key auth |
-| Deploy | Cloudflare Pages (`@cloudflare/next-on-pages`) |
+| Deploy | Cloudflare Workers (`@opennextjs/cloudflare`) |
 | File storage | Cloudflare R2 (native binding, not access keys) |
 | Database | Supabase (Postgres) |
-| AI extraction | Google Gemini API — gemini-2.5-flash, Structured Output (Developer API key; see note below) |
+| AI extraction | Google Gemini API — gemini-flash-latest, Structured Output (Developer API key; see note below) |
 | Validation | Zod (production) / Pydantic (local reference scripts) |
 | Processing | TypeScript, inside Next.js API routes (Cloudflare Workers runtime) |
 
@@ -49,7 +49,21 @@ progress in only one.
 doesn't run natively on the Workers edge runtime, so production auth is a
 Gemini API key instead. Same model, same Structured Output support,
 different product/billing line than the course brief's Vertex AI example —
-intentional, documented trade-off, not an oversight.
+intentional, documented trade-off, not an oversight. Use `gemini-flash-latest`
+(a stable alias), not a pinned version like `gemini-2.5-flash` — pinned
+versions can be listed by the API yet still reject `generateContent` calls
+with a 404 once Google sunsets them, as happened during this project.
+
+**`@opennextjs/cloudflare`, not `@cloudflare/next-on-pages`:** the project
+initially deployed via `@cloudflare/next-on-pages` to Cloudflare Pages, but
+hit a real bug in its Request-wrapping layer (`TypeError: Illegal invocation`
+on `request.formData()`, reproducible only under the live Workers runtime,
+not in local tests). That adapter is itself deprecated by Cloudflare in
+favor of `@opennextjs/cloudflare`, which deploys as a plain Cloudflare
+Worker via `wrangler deploy` (not Pages) and doesn't have this issue. Routes
+must NOT declare `export const runtime = "edge"` under this adapter — the
+whole app runs uniformly under Workers already, and that per-route
+declaration (needed by the old adapter) breaks the OpenNext build.
 
 ## Architecture
 
@@ -59,7 +73,7 @@ POST /api/upload (PDF)
   → context.waitUntil(...) continues processing in the same Worker invocation:
       1. text extraction (unpdf)
       2. PII redaction (regex: names, national ID, phone, email) — BEFORE any Gemini call
-      3. Gemini API (gemini-2.5-flash), Structured Output → IEPExtraction (Zod)
+      3. Gemini API (gemini-flash-latest), Structured Output → IEPExtraction (Zod)
       4. persist to Supabase `extractions`, set status=done (or failed + error_message)
   → outgoing webhook (HMAC-signed) to WEBHOOK_URL if configured, with confidence score
 ```
@@ -109,6 +123,11 @@ WEBHOOK_SECRET=
 ```
 
 R2 is configured as a binding in `wrangler.toml`, not via env vars.
+`SUPABASE_URL` (not sensitive) is also declared directly in `wrangler.toml`
+as a plain `[vars]` entry for production, separate from `.env.local`, which
+is for local dev only. Production secrets (`GEMINI_API_KEY`,
+`SUPABASE_SERVICE_ROLE_KEY`, `DOCUMENTS_API_KEY`) are set via
+`wrangler secret put <NAME>`, never committed anywhere.
 
 ## Commands
 
@@ -121,6 +140,12 @@ pip install -r requirements.txt
 
 # database
 # run supabase/schema.sql in the Supabase SQL editor, or: supabase db push
+
+# local Workers runtime preview
+npm run preview
+
+# deploy to production (Cloudflare Workers)
+npm run deploy
 
 # run the local reference pipeline directly (no web server needed)
 python iep_schema.py path/to/document.pdf

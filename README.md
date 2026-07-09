@@ -1,5 +1,7 @@
 # special-ed-doc-intelligence
 
+**Live:** https://special-ed-doc-intelligence.gil612.workers.dev
+
 AI-powered document intelligence service that extracts structured data from
 Israeli special-education documents (IEPs / inclusion-committee decisions —
 תח"י / ועדת שילוב) using the Gemini API's Structured Output, with a
@@ -20,7 +22,7 @@ PDF upload
   → Cloudflare R2 (file storage, native Worker binding)
   → text extraction (unpdf)
   → PII redaction (names / national ID / phone / email stripped)
-  → Gemini API (gemini-2.5-flash, Structured Output)
+  → Gemini API (gemini-flash-latest, Structured Output)
   → Zod validation
   → Supabase (structured result)
   → outgoing webhook (HMAC-signed, on completion)
@@ -39,10 +41,10 @@ design, quick iteration without deploying), not as what runs in production.
 |---|---|
 | Frontend / Dashboard | Next.js + Tailwind |
 | API | Next.js API Routes, API-Key auth |
-| Deploy | Cloudflare Pages (`@cloudflare/next-on-pages`) |
+| Deploy | Cloudflare Workers (`@opennextjs/cloudflare`) |
 | File storage | Cloudflare R2 (native binding) |
 | Database | Supabase (Postgres) |
-| AI extraction | Google Gemini API — gemini-2.5-flash, Structured Output (Developer API key, not Vertex AI — see note below) |
+| AI extraction | Google Gemini API — gemini-flash-latest, Structured Output (Developer API key, not Vertex AI — see note below) |
 | Validation | Zod (production) / Pydantic (local reference scripts) |
 | Processing | TypeScript, inside Next.js API routes (Cloudflare Workers runtime) |
 
@@ -52,6 +54,18 @@ runtime. The Gemini Developer API (an API key in a header) gives the same
 model and Structured Output support and is trivially edge-compatible, at
 the cost of a different billing/product line than the course brief's
 Vertex AI example.
+
+**Why `@opennextjs/cloudflare` and not `@cloudflare/next-on-pages`:** the
+project initially used `@cloudflare/next-on-pages` (a Cloudflare Pages
+adapter), but hit a real bug in its Request-wrapping layer — calling
+`request.formData()` threw `TypeError: Illegal invocation` in production,
+reproducible only under the actual Workers runtime, not in local
+tests. `@cloudflare/next-on-pages` is itself deprecated by Cloudflare in
+favor of `@opennextjs/cloudflare`, which deploys as a plain Cloudflare
+Worker (not Pages) and doesn't have this issue. `gemini-2.5-flash` was also
+found to be rejected by the live API (listed but not servable) during this
+same debugging pass and was swapped for `gemini-flash-latest`, Google's
+stable alias for the current recommended flash-tier model.
 
 ## Project structure
 
@@ -113,6 +127,17 @@ pip install -r requirements.txt
 
 Run `supabase/schema.sql` in the Supabase SQL editor (or `supabase db push`).
 
+### Deploy
+
+```bash
+npm run preview   # local Workers runtime preview (opennextjs-cloudflare build + preview)
+npm run deploy    # build + wrangler deploy to production
+```
+
+Runtime secrets (`GEMINI_API_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `DOCUMENTS_API_KEY`) are
+set via `wrangler secret put <NAME>`, not `.env.local` — that file is for local dev only.
+`SUPABASE_URL` is a plain (non-sensitive) var declared directly in `wrangler.toml`.
+
 ### Run the local reference pipeline directly (no web server needed)
 
 ```bash
@@ -145,7 +170,7 @@ See `SPEC.md` for the full data model and the mapping from the course's
 - [x] Outgoing webhook (HMAC-signed completion notification)
 - [ ] Dashboard UI
 - [ ] REST API read endpoints (`GET /api/documents`, `GET /api/documents/{id}`)
-- [ ] Deploy to Cloudflare Pages
+- [x] Deploy to production (Cloudflare Workers)
 
 ## License
 
