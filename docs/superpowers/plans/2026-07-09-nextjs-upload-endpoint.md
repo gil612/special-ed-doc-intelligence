@@ -274,9 +274,17 @@ describe("redactText", () => {
   });
 
   it("redacts an email address", () => {
-    const result = redactText("ניתן לפנות ל-parent@example.com לפרטים.");
-    expect(result.redactedText).toBe("ניתן לפנות ל-[REDACTED_EMAIL] לפרטים.");
+    const result = redactText("ניתן לפנות באימייל parent@example.com לפרטים.");
+    expect(result.redactedText).toBe("ניתן לפנות באימייל [REDACTED_EMAIL] לפרטים.");
     expect(result.matches).toEqual([{ kind: "email", original: "parent@example.com" }]);
+  });
+
+  it("fully redacts a hyphenated local part and a multi-label domain", () => {
+    const result = redactText("אפשר גם באימייל cohen-noa@school.education.co.il לתיאום.");
+    expect(result.redactedText).toBe("אפשר גם באימייל [REDACTED_EMAIL] לתיאום.");
+    expect(result.matches).toEqual([
+      { kind: "email", original: "cohen-noa@school.education.co.il" },
+    ]);
   });
 
   it("redacts an unlabeled free-text name gated on a known first name", () => {
@@ -344,7 +352,13 @@ export function summarizeRedaction(result: RedactionResult): string {
 const ISRAELI_ID_CONTEXT_RE = /(ת\.?\s*ז\.?|תעודת\s+זהות)\s*[:\-]?\s*(\d[\d\-\s]{7,10}\d)/g;
 const BARE_9_DIGIT_RE = /(?<!\d)(\d{9})(?!\d)/g;
 const PHONE_RE = /(?<!\d)(0(?:5\d|[23489]|7\d)[\-\s]?\d{3}[\-\s]?\d{4})(?!\d)/g;
-const EMAIL_RE = /[\w.+-]+@[\w-]+\.[\w.-]+/g;
+// Deliberately not byte-parity with redaction.py's EMAIL_RE: Python's
+// Unicode-aware \w incidentally swallows an adjacent Hebrew letter/hyphen
+// and a trailing sentence period. JS's ASCII \w can't (and shouldn't try
+// to) replicate that — this regex instead fully captures real emails
+// (hyphenated local parts, multi-label domains like .co.il) without
+// bleeding into surrounding punctuation.
+const EMAIL_RE = /[\w.+-]+@[\w-]+(?:\.[\w-]+)+/g;
 const NAME_LABEL_RE =
   /(שם\s+ה?(?:תלמיד|הורה|מורה|יועצת|יועץ|מחנך|מחנכת|נציג|נציגת)(?:\/ה)?\s*[:\-]?\s*)([א-ת]+(?:\s+[א-ת]{2,})?)/g;
 
