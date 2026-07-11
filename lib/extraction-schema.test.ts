@@ -18,6 +18,11 @@ describe("IEPExtractionSchema", () => {
     expect(result.review_date).toBe("2028-03-14");
   });
 
+  it("normalizes a DD.MM.YYYY review_date to ISO", () => {
+    const result = IEPExtractionSchema.parse(validExtraction({ review_date: "14.03.2028" }));
+    expect(result.review_date).toBe("2028-03-14");
+  });
+
   it("accepts an ISO review_date unchanged", () => {
     const result = IEPExtractionSchema.parse(validExtraction({ review_date: "2028-03-14" }));
     expect(result.review_date).toBe("2028-03-14");

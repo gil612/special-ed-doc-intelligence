@@ -10,7 +10,7 @@ const PLACEMENT_TYPES = [
 export const PlacementType = z.enum(PLACEMENT_TYPES);
 
 const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
-const DD_MM_YYYY_RE = /^(\d{1,2})[/-](\d{1,2})[/-](\d{4})$/;
+const DD_MM_YYYY_RE = /^(\d{1,2})[./-](\d{1,2})[./-](\d{4})$/;
 
 function normalizeDateInput(value: unknown): unknown {
   if (typeof value !== "string") return value;
@@ -36,9 +36,9 @@ function isValidCalendarDate(isoDate: string): boolean {
 }
 
 // Ported from iep_schema.py's parse_israeli_date_format: source documents write
-// dates as DD/MM/YYYY, and the model sometimes echoes that back verbatim
-// instead of ISO-8601. Output stays a string (not Date) to avoid timezone
-// bugs when round-tripping to Postgres `date`.
+// dates as DD/MM/YYYY, DD-MM-YYYY, or DD.MM.YYYY, and the model sometimes
+// echoes that back verbatim instead of ISO-8601. Output stays a string (not
+// Date) to avoid timezone bugs when round-tripping to Postgres `date`.
 const reviewDateSchema = z.preprocess(
   normalizeDateInput,
   z
