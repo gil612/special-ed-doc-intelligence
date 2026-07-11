@@ -115,7 +115,7 @@ Outgoing Webhook (HMAC-signed, ל-WEBHOOK_URL אם מוגדר) → "מסמך X �
 - [x] שכבת Redaction לפני קריאת ה-AI provider
 - [x] Upload endpoint + עיבוד אסינכרוני + Outgoing Webhook עם HMAC
 - [ ] תוצאות ב-Supabase, טבלת מיפוי זהות מופרדת
-- [ ] Dashboard: רשימה + פנל + Upload UI
+- [x] Dashboard: רשימה + פנל + Upload UI
 - [ ] REST API עם API Key Auth
 - [ ] נבדק על מדגם מסמכים (אמיתיים/סינתטיים) — accuracy מתועד
 - [ ] חישוב עלות ל-100 מסמכים/יום

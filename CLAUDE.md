@@ -27,7 +27,7 @@ Done: `IEPExtraction` schema + validation, PII redaction layer, and
 end-to-end extraction tested against a sample document — all in the
 Python reference scripts (`iep_schema.py`, `redaction.py`), plus the
 Supabase schema (`supabase/schema.sql`). Not yet built: the Next.js app
-itself (no `package.json` exists yet), upload endpoint, webhook, dashboard,
+itself (no `package.json` exists yet), upload endpoint, webhook,
 REST API, deploy. See the `## Status` checklist in `README.md` and the
 `## Checklist` in `SPEC.md` — keep both in sync rather than tracking
 progress in only one.
