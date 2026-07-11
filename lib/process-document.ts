@@ -1,6 +1,7 @@
 import { redactText } from "./redact";
 import { extractIEP, type GeminiClient } from "./gemini";
 import { sendWebhook, type WebhookPayload } from "./webhook";
+import { errorMessage } from "./error-message";
 import type { IEPExtraction } from "./extraction-schema";
 
 export interface ProcessDocumentDeps {
@@ -56,7 +57,7 @@ export async function processDocument(documentId: string, deps: ProcessDocumentD
 }
 
 async function markFailed(documentId: string, error: unknown, deps: ProcessDocumentDeps): Promise<void> {
-  const message = error instanceof Error ? error.message : String(error);
+  const message = errorMessage(error);
 
   await deps.supabase.updateDocumentStatus("failed", message);
 

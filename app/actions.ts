@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { getCloudflareContext } from "@opennextjs/cloudflare";
 import "@/lib/cloudflare-env";
 import { handleUpload } from "@/lib/upload-document";
+import { errorMessage } from "@/lib/error-message";
 import {
   createSupabaseClient,
   insertDocument,
@@ -41,7 +42,6 @@ export async function uploadDocument(formData: FormData): Promise<UploadActionRe
     revalidatePath("/");
     return { success: true, documentId };
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    return { success: false, error: `העלאה נכשלה: ${message}` };
+    return { success: false, error: `העלאה נכשלה: ${errorMessage(error)}` };
   }
 }

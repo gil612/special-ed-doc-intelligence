@@ -1,6 +1,7 @@
 import { getCloudflareContext } from "@opennextjs/cloudflare";
 import "@/lib/cloudflare-env";
 import { handleUpload } from "@/lib/upload-document";
+import { errorMessage } from "@/lib/error-message";
 import {
   createSupabaseClient,
   insertDocument,
@@ -47,8 +48,7 @@ export async function POST(request: Request): Promise<Response> {
       waitUntil: ctx.waitUntil.bind(ctx),
     }));
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    return Response.json({ error: `failed to store document: ${message}` }, { status: 503 });
+    return Response.json({ error: `failed to store document: ${errorMessage(error)}` }, { status: 503 });
   }
 
   return Response.json({ document_id: documentId, status: "processing" }, { status: 202 });
