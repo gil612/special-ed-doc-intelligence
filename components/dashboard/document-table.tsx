@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import type { DocumentRow } from "@/lib/supabase";
 import { DocumentDetailPanel } from "./document-detail-panel";
 
@@ -11,8 +12,16 @@ const STATUS_LABELS: Record<DocumentRow["status"], string> = {
 };
 
 export function DocumentTable({ documents }: { documents: DocumentRow[] }) {
+  const router = useRouter();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const selected = documents.find((doc) => doc.id === selectedId) ?? null;
+
+  const hasProcessing = documents.some((doc) => doc.status === "processing");
+  useEffect(() => {
+    if (!hasProcessing) return;
+    const intervalId = setInterval(() => router.refresh(), 3000);
+    return () => clearInterval(intervalId);
+  }, [hasProcessing, router]);
 
   return (
     <div className="flex gap-6">
