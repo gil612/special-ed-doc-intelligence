@@ -91,7 +91,7 @@ describe("processDocument", () => {
     expect(typeof errorMessage).toBe("string");
   });
 
-  it("does not report 'failed' if a post-extraction step throws (extraction already succeeded)", async () => {
+  it("marks the document failed (rather than leaving it stuck at 'processing') if persisting the extraction fails", async () => {
     const deps = buildDeps({
       supabase: {
         insertExtraction: vi.fn().mockRejectedValue(new Error("Supabase write failed")),
@@ -99,8 +99,45 @@ describe("processDocument", () => {
       },
     });
 
-    await expect(processDocument("doc-1", deps)).rejects.toThrow("Supabase write failed");
-    expect(deps.supabase.updateDocumentStatus).not.toHaveBeenCalled();
-    expect(deps.sendWebhook).not.toHaveBeenCalled();
+    await processDocument("doc-1", deps);
+
+    expect(deps.supabase.updateDocumentStatus).toHaveBeenCalledWith("failed", "Supabase write failed");
+    expect(deps.sendWebhook).toHaveBeenCalledWith(
+      { document_id: "doc-1", status: "failed", error: "Supabase write failed" },
+      "https://example.com/hook",
+      "secret"
+    );
+  });
+
+  it("marks the document failed if the extraction is saved but the status update to 'done' fails", async () => {
+    const deps = buildDeps({
+      supabase: {
+        insertExtraction: vi.fn().mockResolvedValue(undefined),
+        updateDocumentStatus: vi
+          .fn()
+          .mockRejectedValueOnce(new Error("transient connectivity error"))
+          .mockResolvedValueOnce(undefined),
+      },
+    });
+
+    await processDocument("doc-1", deps);
+
+    expect(deps.supabase.updateDocumentStatus).toHaveBeenNthCalledWith(1, "done");
+    expect(deps.supabase.updateDocumentStatus).toHaveBeenNthCalledWith(2, "failed", "transient connectivity error");
+    expect(deps.sendWebhook).toHaveBeenCalledWith(
+      { document_id: "doc-1", status: "failed", error: "transient connectivity error" },
+      "https://example.com/hook",
+      "secret"
+    );
+  });
+
+  it("does not touch document status on a webhook failure once the document is already durably 'done'", async () => {
+    const deps = buildDeps({
+      sendWebhook: vi.fn().mockRejectedValue(new Error("webhook endpoint unreachable")),
+    });
+
+    await expect(processDocument("doc-1", deps)).rejects.toThrow("webhook endpoint unreachable");
+    expect(deps.supabase.updateDocumentStatus).toHaveBeenCalledTimes(1);
+    expect(deps.supabase.updateDocumentStatus).toHaveBeenCalledWith("done");
   });
 });

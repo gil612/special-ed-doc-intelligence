@@ -25,30 +25,45 @@ export async function processDocument(documentId: string, deps: ProcessDocumentD
     const { redactedText } = redactText(rawText);
     extraction = await extractIEP(redactedText, deps.geminiClient);
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-
-    await deps.supabase.updateDocumentStatus("failed", message);
-
-    const payload: WebhookPayload = {
-      document_id: documentId,
-      status: "failed",
-      error: message,
-    };
-    await deps.sendWebhook(payload, deps.webhookUrl, deps.webhookSecret);
+    await markFailed(documentId, error, deps);
     return;
   }
 
-  // Deliberately outside the try/catch above: a valid extraction already
-  // exists at this point, so a transient failure persisting/announcing it
-  // (e.g. a Supabase or webhook hiccup) must not be reported as "failed" —
-  // that would overwrite a real result with a misleading status.
-  await deps.supabase.insertExtraction(extraction);
-  await deps.supabase.updateDocumentStatus("done");
+  // A valid extraction exists at this point, but it isn't a real, visible
+  // result until it's actually persisted. A failure here - e.g. a DB
+  // constraint violation, or a transient connectivity blip - must still
+  // resolve the document to a terminal state: leaving it "processing"
+  // forever with no error surfaced (the previous behavior) is worse than
+  // a possibly-imprecise "failed" label, since at least it's visible and
+  // actionable rather than silently stuck.
+  try {
+    await deps.supabase.insertExtraction(extraction);
+    await deps.supabase.updateDocumentStatus("done");
+  } catch (error) {
+    await markFailed(documentId, error, deps);
+    return;
+  }
 
   const payload: WebhookPayload = {
     document_id: documentId,
     status: "done",
     confidence: extraction.confidence,
+  };
+  // Deliberately unguarded: the document is already durably persisted and
+  // marked "done" by this point, so a webhook hiccup must not retroactively
+  // change its status.
+  await deps.sendWebhook(payload, deps.webhookUrl, deps.webhookSecret);
+}
+
+async function markFailed(documentId: string, error: unknown, deps: ProcessDocumentDeps): Promise<void> {
+  const message = error instanceof Error ? error.message : String(error);
+
+  await deps.supabase.updateDocumentStatus("failed", message);
+
+  const payload: WebhookPayload = {
+    document_id: documentId,
+    status: "failed",
+    error: message,
   };
   await deps.sendWebhook(payload, deps.webhookUrl, deps.webhookSecret);
 }
