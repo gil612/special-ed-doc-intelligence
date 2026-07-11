@@ -94,6 +94,7 @@ export async function listDocumentsWithExtractions(client: SupabaseClient): Prom
           review_date: rawExtraction.review_date,
           accommodations: rawExtraction.accommodations,
           confidence: rawExtraction.confidence,
+          summary: rawExtraction.summary,
         }
       : null;
 

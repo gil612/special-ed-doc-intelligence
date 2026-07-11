@@ -86,6 +86,16 @@ describe("IEPExtractionSchema", () => {
     expect(result.school_year).toBeNull();
   });
 
+  it("accepts a null summary", () => {
+    const result = IEPExtractionSchema.parse(validExtraction({ summary: null }));
+    expect(result.summary).toBeNull();
+  });
+
+  it("defaults summary to null when the model omits it entirely", () => {
+    const result = IEPExtractionSchema.parse(validExtraction());
+    expect(result.summary).toBeNull();
+  });
+
   it("rejects a placement_type outside the documented enum", () => {
     expect(() => IEPExtractionSchema.parse(validExtraction({ placement_type: "לא ידוע" }))).toThrow();
   });

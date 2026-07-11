@@ -18,6 +18,7 @@ const RESPONSE_SCHEMA: Schema = {
     review_date: { type: Type.STRING, nullable: true },
     accommodations: { type: Type.ARRAY, items: { type: Type.STRING } },
     confidence: { type: Type.NUMBER },
+    summary: { type: Type.STRING, nullable: true },
   },
   required: ["placement_type", "confidence"],
 };
@@ -34,6 +35,9 @@ export function buildExtractionPrompt(redactedDocumentText: string): string {
 - review_date: תאריך הוועדה/עדכון הבא, בפורמט שמופיע במסמך
 - accommodations: מערך של התאמות נדרשות (מחרוזות)
 - confidence: שדה חובה, 0-1, עד כמה החילוץ הכולל מלא ואמין
+- summary: סיכום קצר בעברית (1-2 משפטים) של המקרה — שיבוץ, היקף תמיכה עיקרי,
+  ונקודה מרכזית אחת. התייחס לתלמיד/ה באופן כללי, בלי לצטט placeholder-ים
+  כמו [REDACTED_NAME] במפורש. null אם אין מספיק מידע לסיכום משמעותי.
 
 אם שדה לא מופיע במסמך במפורש, החזר null עבורו — אל תמציא ערך.
 

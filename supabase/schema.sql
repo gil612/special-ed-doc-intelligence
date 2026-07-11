@@ -42,6 +42,7 @@ create table extractions (
     review_date date,
     accommodations jsonb not null default '[]'::jsonb,
     confidence numeric not null check (confidence >= 0 and confidence <= 1),
+    summary text,
     created_at timestamptz not null default now()
 );
 

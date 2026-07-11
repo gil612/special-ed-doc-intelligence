@@ -93,6 +93,7 @@ export const IEPExtractionSchema = z.object({
   review_date: reviewDateSchema.nullish().transform((value) => value ?? null),
   accommodations: z.array(z.string()).nullish().transform((value) => value ?? []),
   confidence: z.number().min(0).max(1),
+  summary: z.string().nullish().transform((value) => value ?? null),
 });
 
 export type IEPExtraction = z.infer<typeof IEPExtractionSchema>;

@@ -67,6 +67,10 @@ class IEPExtraction(BaseModel):
         ge=0.0, le=1.0,
         description="ציון ביטחון בחילוץ, 0-1. שדה חובה — לעולם לא None, גם כשמסמך חלקי.",
     )
+    summary: Optional[str] = Field(
+        default=None,
+        description="סיכום קצר (1-2 משפטים) של המקרה — שיבוץ, היקף תמיכה, ונקודה מרכזית אחת",
+    )
 
     @field_validator("student_id")
     @classmethod
