@@ -1,4 +1,5 @@
 import type { DocumentRow } from "@/lib/supabase";
+import { ConfidenceBadge } from "./confidence-badge";
 
 const FIELD_LABELS = {
   student_id: "מזהה תלמיד",
@@ -12,7 +13,12 @@ const FIELD_LABELS = {
 export function DocumentDetailPanel({ document }: { document: DocumentRow }) {
   return (
     <div className="w-full text-sm">
-      {document.status === "processing" && <p className="text-slate-500">המסמך בעיבוד…</p>}
+      {document.status === "processing" && (
+        <p className="flex items-center gap-2 text-slate-500">
+          <span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-slate-300 border-t-slate-600" />
+          המסמך בדרך אלינו…
+        </p>
+      )}
 
       {document.status === "failed" && (
         <p className="text-red-600">כשל בעיבוד: {document.error_message}</p>
@@ -51,7 +57,9 @@ export function DocumentDetailPanel({ document }: { document: DocumentRow }) {
             </div>
             <div>
               <dt className="font-medium text-slate-600">ביטחון</dt>
-              <dd>{Math.round(document.extraction.confidence * 100)}%</dd>
+              <dd>
+                <ConfidenceBadge confidence={document.extraction.confidence} />
+              </dd>
             </div>
           </dl>
         </div>
