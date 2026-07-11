@@ -16,9 +16,20 @@ function normalizeDateInput(value: unknown): unknown {
   if (typeof value !== "string") return value;
   const trimmed = value.trim();
   const match = trimmed.match(DD_MM_YYYY_RE);
-  if (!match) return trimmed;
-  const [, day, month, year] = match;
-  return `${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`;
+  if (match) {
+    const [, day, month, year] = match;
+    return `${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`;
+  }
+  if (ISO_DATE_RE.test(trimmed)) return trimmed;
+  // Doesn't match any recognized date format - e.g. a vague, non-date
+  // description like "בעוד כחצי שנה" ("in about six months"), or the
+  // literal string "null". There is no exact date to recover, so treat
+  // it the same as an explicit null rather than failing the whole
+  // extraction over one unresolvable field. A calendar-shaped but
+  // impossible date (e.g. day=31 for February) still gets rejected below
+  // by isValidCalendarDate - that's a genuine data problem, unlike free
+  // text that was never a date attempt.
+  return null;
 }
 
 // Digit-shape regexes accept nonsense like "31/02/2028" or "99/99/2028" — this
@@ -71,7 +82,7 @@ const studentIdSchema = z
 
 export const IEPExtractionSchema = z.object({
   student_id: studentIdSchema.nullish().transform((value) => value ?? null),
-  school_year: z.string(),
+  school_year: z.string().nullish().transform((value) => value ?? null),
   disability_category: z
     .string()
     .nullish()

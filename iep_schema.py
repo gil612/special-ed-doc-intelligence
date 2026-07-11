@@ -50,7 +50,9 @@ class IEPExtraction(BaseModel):
         default=None,
         description="מזהה תלמיד פנימי בלבד (למשל STU-0001) — לעולם לא שם מלא",
     )
-    school_year: str = Field(description='שנת לימודים, למשל תשפ"ז')
+    school_year: Optional[str] = Field(
+        default=None, description='שנת לימודים, למשל תשפ"ז — null אם לא מצוין במסמך'
+    )
     disability_category: Optional[str] = Field(
         default=None, description="קטגוריית הליקוי כפי שמופיע במסמך"
     )
@@ -106,6 +108,16 @@ class IEPExtraction(BaseModel):
         information than the schema's `date` type can represent exactly.
         Default the day to the 1st of that month rather than rejecting
         the whole field, since a review month is still useful signal.
+
+        If none of the above match - e.g. the document only gives a vague,
+        non-date description like "בעוד כחצי שנה" ("in about six months") -
+        there is no exact date to recover. Treat that the same as an
+        explicit null rather than passing the raw text through to
+        Pydantic's date parser, which would raise and reject the entire
+        extraction over one unresolvable field. A calendar-shaped but
+        impossible date (e.g. day=31 for February) still fails below, when
+        `date(year, month, day)` raises - that is a genuine data problem
+        worth surfacing, unlike free text that was never a date attempt.
         """
         if not isinstance(v, str):
             return v
@@ -124,7 +136,7 @@ class IEPExtraction(BaseModel):
         match = re.match(r"^([א-ת]+)\s+(\d{4})$", text)
         if match and match.group(1) in hebrew_months:
             return date(int(match.group(2)), hebrew_months[match.group(1)], 1)
-        return v
+        return None
 
 
 # ---------------------------------------------------------------------------

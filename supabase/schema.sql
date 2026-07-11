@@ -28,7 +28,7 @@ create table extractions (
     id uuid primary key default gen_random_uuid(),
     document_id uuid not null references documents (id) on delete cascade,
     student_id text,
-    school_year text not null,
+    school_year text,
     disability_category text,
     placement_type text not null
         check (placement_type in (

@@ -33,8 +33,9 @@ describe("IEPExtractionSchema", () => {
     expect(result.review_date).toBeNull();
   });
 
-  it("rejects an unparseable review_date", () => {
-    expect(() => IEPExtractionSchema.parse(validExtraction({ review_date: "not a date" }))).toThrow();
+  it("nulls out an unparseable review_date instead of failing the whole extraction", () => {
+    const result = IEPExtractionSchema.parse(validExtraction({ review_date: "not a date" }));
+    expect(result.review_date).toBeNull();
   });
 
   it("rejects a calendar-invalid DD/MM/YYYY date (Feb 31st doesn't exist)", () => {
@@ -78,6 +79,11 @@ describe("IEPExtractionSchema", () => {
   it("accepts a null student_id", () => {
     const result = IEPExtractionSchema.parse(validExtraction({ student_id: null }));
     expect(result.student_id).toBeNull();
+  });
+
+  it("accepts a null school_year instead of failing the whole extraction", () => {
+    const result = IEPExtractionSchema.parse(validExtraction({ school_year: null }));
+    expect(result.school_year).toBeNull();
   });
 
   it("rejects a placement_type outside the documented enum", () => {
