@@ -1,31 +1,13 @@
 import { getCloudflareContext } from "@opennextjs/cloudflare";
-import { createGeminiClient } from "@/lib/gemini";
-import { extractPdfText } from "@/lib/pdf";
-import { processDocument } from "@/lib/process-document";
+import type { Env } from "@/lib/cloudflare-env";
+import "@/lib/cloudflare-env";
+import { handleUpload } from "@/lib/upload-document";
 import {
   createSupabaseClient,
   insertDocument,
   insertExtraction,
   updateDocumentStatus,
 } from "@/lib/supabase";
-import { sendWebhook } from "@/lib/webhook";
-
-interface Env {
-  DOCS_BUCKET: R2Bucket;
-  SUPABASE_URL: string;
-  SUPABASE_SERVICE_ROLE_KEY: string;
-  GEMINI_API_KEY: string;
-  DOCUMENTS_API_KEY: string;
-  WEBHOOK_URL?: string;
-  WEBHOOK_SECRET?: string;
-}
-
-// `getCloudflareContext`'s `env` is typed via the ambient `CloudflareEnv`
-// interface (declared by @opennextjs/cloudflare) - augment it here so `env`
-// is correctly typed as `Env` at the call site below.
-declare global {
-  interface CloudflareEnv extends Env {}
-}
 
 export async function POST(request: Request): Promise<Response> {
   const { env, ctx } = getCloudflareContext();
@@ -51,31 +33,24 @@ export async function POST(request: Request): Promise<Response> {
   const fileBuffer = await file.arrayBuffer();
   const supabase = createSupabaseClient(env.SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY);
 
-  let storagePath: string;
   let documentId: string;
   try {
-    storagePath = `documents/${crypto.randomUUID()}.pdf`;
-    await env.DOCS_BUCKET.put(storagePath, fileBuffer);
-    documentId = await insertDocument(supabase, storagePath, file.name);
+    ({ documentId } = await handleUpload(fileBuffer, file.name, {
+      putObject: (key, body) => env.DOCS_BUCKET.put(key, body).then(() => undefined),
+      insertDocument: (storagePath, originalFilename) =>
+        insertDocument(supabase, storagePath, originalFilename),
+      geminiApiKey: env.GEMINI_API_KEY,
+      insertExtraction: (documentId, extraction) => insertExtraction(supabase, documentId, extraction),
+      updateDocumentStatus: (documentId, status, errorMessage) =>
+        updateDocumentStatus(supabase, documentId, status, errorMessage ?? null),
+      webhookUrl: env.WEBHOOK_URL,
+      webhookSecret: env.WEBHOOK_SECRET,
+      waitUntil: ctx.waitUntil.bind(ctx),
+    }));
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     return Response.json({ error: `failed to store document: ${message}` }, { status: 503 });
   }
-
-  ctx.waitUntil(
-    processDocument(documentId, {
-      fetchDocumentText: () => extractPdfText(fileBuffer),
-      geminiClient: createGeminiClient(env.GEMINI_API_KEY),
-      supabase: {
-        insertExtraction: (extraction) => insertExtraction(supabase, documentId, extraction),
-        updateDocumentStatus: (status, errorMessage) =>
-          updateDocumentStatus(supabase, documentId, status, errorMessage ?? null),
-      },
-      sendWebhook,
-      webhookUrl: env.WEBHOOK_URL,
-      webhookSecret: env.WEBHOOK_SECRET,
-    })
-  );
 
   return Response.json({ document_id: documentId, status: "processing" }, { status: 202 });
 }
