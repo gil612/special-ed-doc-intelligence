@@ -2,7 +2,6 @@
 
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { uploadDocument } from "@/app/actions";
 
 interface FileProgress {
   fileName: string;
@@ -25,8 +24,9 @@ export function UploadForm() {
 
     await Promise.all(
       files.map(async (file, index) => {
-        // Server Actions don't expose byte-level upload progress, so this
-        // is an honest, simulated fill (same approach the click-invoice
+        // A plain fetch() doesn't expose byte-level upload progress either
+        // (that needs XMLHttpRequest's progress events), so this is an
+        // honest, simulated fill (same approach the click-invoice
         // reference project uses) rather than a fabricated precise
         // percentage - it communicates "this is in flight," not a measured fact.
         const tick = setInterval(() => {
@@ -38,14 +38,18 @@ export function UploadForm() {
         const singleFileFormData = new FormData();
         singleFileFormData.set("file", file);
         try {
-          const result = await uploadDocument(singleFileFormData);
+          const response = await fetch("/api/dashboard-upload", {
+            method: "POST",
+            body: singleFileFormData,
+          });
+          const result: { document_id: string; status: string } | { error: string } = await response.json();
           clearInterval(tick);
           setUploads((prev) =>
             prev.map((u, i) =>
               i === index
-                ? result.success
+                ? response.ok
                   ? { ...u, percent: 100, status: "done" }
-                  : { ...u, percent: 100, status: "error", error: result.error }
+                  : { ...u, percent: 100, status: "error", error: "error" in result ? result.error : "" }
                 : u
             )
           );
