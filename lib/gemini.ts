@@ -31,10 +31,15 @@ export function createGeminiClient(apiKey: string): GeminiClient {
     async extract(redactedText: string): Promise<unknown> {
       const response = await ai.models.generateContent({
         // "gemini-2.5-flash" is listed by the API but rejects generateContent
-        // calls with a 404 ("no longer available"). "gemini-flash-latest" is
-        // Google's stable alias that always resolves to the current
-        // recommended flash-tier model, avoiding this class of breakage.
-        model: "gemini-flash-latest",
+        // calls with a 404 ("no longer available") - it's being decommissioned.
+        // Both "gemini-flash-latest" and "gemini-flash-lite-latest" were tried
+        // next, but their quota-exceeded error messages explicitly showed
+        // "model: gemini-2.5-flash" - i.e. both aliases currently resolve
+        // server-side to the same being-decommissioned model, not a stable
+        // replacement. "gemini-3.1-flash-lite" is a specific, non-aliased
+        // model from a newer generation - verified with 4 consecutive
+        // successful direct API calls, not assumed.
+        model: "gemini-3.1-flash-lite",
         contents: buildExtractionPrompt(redactedText),
         config: {
           responseMimeType: "application/json",
