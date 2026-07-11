@@ -1,5 +1,26 @@
-import { GoogleGenAI } from "@google/genai";
-import { IEPExtractionSchema, type IEPExtraction } from "./extraction-schema";
+import { GoogleGenAI, Type, type Schema } from "@google/genai";
+import { IEPExtractionSchema, PlacementType, type IEPExtraction } from "./extraction-schema";
+
+// Constrains Gemini's JSON output to this exact shape, in addition to the
+// prompt's field descriptions. Without this, the model is only guided by
+// prompt text and occasionally emits syntactically invalid JSON (seen in
+// practice on harder/mixed-language documents) - IEPExtractionSchema.parse()
+// below is still the authoritative validator regardless.
+const RESPONSE_SCHEMA: Schema = {
+  type: Type.OBJECT,
+  properties: {
+    student_id: { type: Type.STRING, nullable: true },
+    school_year: { type: Type.STRING, nullable: true },
+    disability_category: { type: Type.STRING, nullable: true },
+    placement_type: { type: Type.STRING, format: "enum", enum: [...PlacementType.options] },
+    weekly_support_hours: { type: Type.NUMBER, nullable: true },
+    goals: { type: Type.ARRAY, items: { type: Type.STRING } },
+    review_date: { type: Type.STRING, nullable: true },
+    accommodations: { type: Type.ARRAY, items: { type: Type.STRING } },
+    confidence: { type: Type.NUMBER },
+  },
+  required: ["placement_type", "confidence"],
+};
 
 export function buildExtractionPrompt(redactedDocumentText: string): string {
   return `חלץ מהמסמך הבא נתונים לפי השדות הבאים, והחזר JSON תקין בלבד (בלי הסברים):
@@ -43,6 +64,7 @@ export function createGeminiClient(apiKey: string): GeminiClient {
         contents: buildExtractionPrompt(redactedText),
         config: {
           responseMimeType: "application/json",
+          responseSchema: RESPONSE_SCHEMA,
         },
       });
       if (response.text === undefined) {
