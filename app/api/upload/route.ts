@@ -1,5 +1,4 @@
 import { getCloudflareContext } from "@opennextjs/cloudflare";
-import type { Env } from "@/lib/cloudflare-env";
 import "@/lib/cloudflare-env";
 import { handleUpload } from "@/lib/upload-document";
 import {

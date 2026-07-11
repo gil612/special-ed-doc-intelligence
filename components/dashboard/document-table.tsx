@@ -55,7 +55,9 @@ export function DocumentTable({ documents }: { documents: DocumentRow[] }) {
                 <td className="p-2">
                   {doc.extraction ? `${Math.round(doc.extraction.confidence * 100)}%` : "—"}
                 </td>
-                <td className="p-2">{new Date(doc.uploaded_at).toLocaleString("he-IL")}</td>
+                <td className="p-2">
+                  {new Date(doc.uploaded_at).toLocaleString("he-IL", { timeZone: "Asia/Jerusalem" })}
+                </td>
               </tr>
             ))}
           </tbody>
