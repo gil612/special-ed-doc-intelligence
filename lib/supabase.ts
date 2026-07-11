@@ -41,6 +41,11 @@ export async function updateDocumentStatus(
   if (error) throw error;
 }
 
+export async function deleteDocumentRow(client: SupabaseClient, documentId: string): Promise<void> {
+  const { error } = await client.from("documents").delete().eq("id", documentId);
+  if (error) throw error;
+}
+
 // See lib/sweep-stale-processing.ts for why this exists: a document stuck
 // at "processing" past a generous threshold almost certainly hit the
 // platform's background-execution ceiling, not a transient blip.
