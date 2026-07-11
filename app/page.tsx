@@ -2,6 +2,7 @@ import { getCloudflareContext } from "@opennextjs/cloudflare";
 import "@/lib/cloudflare-env";
 import { createSupabaseClient, listDocumentsWithExtractions } from "@/lib/supabase";
 import { DocumentTable } from "@/components/dashboard/document-table";
+import { UploadForm } from "@/components/dashboard/upload-form";
 
 // This page reads live Cloudflare bindings (getCloudflareContext) and
 // fetches per-request data from Supabase, so it must never be statically
@@ -20,6 +21,7 @@ export default async function HomePage() {
   return (
     <main className="mx-auto max-w-5xl p-8">
       <h1 className="mb-6 text-2xl font-semibold">מסמכי תח&quot;י שהועלו</h1>
+      <UploadForm />
       <DocumentTable documents={documents} />
     </main>
   );
