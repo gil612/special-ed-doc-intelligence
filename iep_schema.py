@@ -9,12 +9,13 @@ Pydantic schema + validation logic for the Document Intelligence Service
 IMPORTANT: Pydantic validates *structured data* (the JSON returned by Vertex AI's
 Structured Output), not the raw PDF bytes themselves. The flow is:
 
-    PDF file -> extract_text_from_pdf() -> [redaction] -> call_vertex_ai() -> raw JSON
+    PDF file -> extract_text() -> [redaction] -> call_vertex_ai() -> raw JSON
              -> validate_extraction(raw JSON) -> IEPExtraction (validated) or ValidationError
 
 This file gives you:
   1. The IEPExtraction schema (with field-level validators for the special-ed domain)
-  2. extract_text_from_pdf() - pulls text out of an uploaded PDF (pypdf)
+  2. extract_text() - pulls text out of an uploaded PDF (pypdf), or reads
+     non-PDF test fixtures (cases/*.md) as plain text
   3. call_vertex_ai() - a STUB. Replace the body with your real Vertex AI call.
      Left unimplemented here because this environment has no Vertex AI credentials/network.
   4. validate_pdf() - ties the whole pipeline together end to end
@@ -90,40 +91,72 @@ class IEPExtraction(BaseModel):
     @classmethod
     def parse_israeli_date_format(cls, v):
         """
-        Source documents write dates as DD/MM/YYYY (or DD-MM-YYYY), and the
-        model sometimes echoes that format back verbatim instead of
-        converting to ISO-8601 - which Pydantic's default date parser
-        rejects. Normalize the common Israeli format here rather than
-        relying on the model to always comply with the prompt.
+        Source documents write dates as DD/MM/YYYY, DD-MM-YYYY, or
+        DD.MM.YYYY, and the model sometimes echoes that format back
+        verbatim instead of converting to ISO-8601 - which Pydantic's
+        default date parser rejects. Normalize the common Israeli formats
+        here rather than relying on the model to always comply with the
+        prompt. The model also sometimes emits the literal string "null"
+        instead of a JSON null when the document doesn't state a review
+        date - treat that the same as None rather than trying to parse it
+        as a date.
+
+        Some documents only state a month and year (e.g. "ינואר 2028"),
+        with no day at all - not a model formatting slip, just coarser
+        information than the schema's `date` type can represent exactly.
+        Default the day to the 1st of that month rather than rejecting
+        the whole field, since a review month is still useful signal.
         """
         if not isinstance(v, str):
             return v
-        match = re.match(r"^(\d{1,2})[/-](\d{1,2})[/-](\d{4})$", v.strip())
+        text = v.strip()
+        if text.lower() == "null":
+            return None
+        match = re.match(r"^(\d{1,2})[./-](\d{1,2})[./-](\d{4})$", text)
         if match:
             day, month, year = (int(g) for g in match.groups())
             return date(year, month, day)
+        hebrew_months = {
+            "ינואר": 1, "פברואר": 2, "מרץ": 3, "אפריל": 4,
+            "מאי": 5, "יוני": 6, "יולי": 7, "אוגוסט": 8,
+            "ספטמבר": 9, "אוקטובר": 10, "נובמבר": 11, "דצמבר": 12,
+        }
+        match = re.match(r"^([א-ת]+)\s+(\d{4})$", text)
+        if match and match.group(1) in hebrew_months:
+            return date(int(match.group(2)), hebrew_months[match.group(1)], 1)
         return v
 
 
 # ---------------------------------------------------------------------------
-# 2. PDF text extraction
+# 2. Document text extraction
 # ---------------------------------------------------------------------------
 
-def extract_text_from_pdf(pdf_path: str) -> str:
-    from pypdf import PdfReader
-
-    reader = PdfReader(pdf_path)
-    return "\n".join(page.extract_text() or "" for page in reader.pages)
-
-
-def extract_and_redact(pdf_path: str):
+def extract_text(doc_path: str) -> str:
     """
-    PDF -> raw text -> redacted text, ready to send to an external AI provider.
+    Extract raw text from a source document. Real IEP documents are PDFs
+    (parsed with pypdf); synthetic test fixtures under cases/ are authored
+    as HTML-wrapped Markdown for readability, so any non-.pdf path is read
+    as text with HTML tags stripped instead of being handed to PdfReader.
+    """
+    if doc_path.lower().endswith(".pdf"):
+        from pypdf import PdfReader
+
+        reader = PdfReader(doc_path)
+        return "\n".join(page.extract_text() or "" for page in reader.pages)
+
+    with open(doc_path, "r", encoding="utf-8") as f:
+        text = f.read()
+    return re.sub(r"<[^>]+>", "", text)
+
+
+def extract_and_redact(doc_path: str):
+    """
+    Document -> raw text -> redacted text, ready to send to an external AI provider.
     Returns the redaction.RedactionResult (redacted_text + local-audit-only matches).
     """
     from redaction import redact_text
 
-    raw_text = extract_text_from_pdf(pdf_path)
+    raw_text = extract_text(doc_path)
     return redact_text(raw_text)
 
 
