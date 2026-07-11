@@ -41,6 +41,7 @@ class IEPExtraction(BaseModel):
     review_date: date | None = Field(description="תאריך הוועדה או עדכון התוכנית הבא")
     accommodations: list[str] = Field(description="התאמות נדרשות (בחינות, סביבה לימודית וכו׳)")
     confidence: float = Field(description="0-1 ציון ביטחון בחילוץ")
+    summary: str | None = Field(description="סיכום קצר (1-2 משפטים) של המקרה")
 ```
 
 ## מודל נתונים (Supabase)
@@ -52,7 +53,7 @@ documents: id, storage_path (R2 key), original_filename, status (processing/done
            error_message, uploaded_at
 extractions: id, document_id (FK), student_id, school_year, disability_category,
              placement_type, weekly_support_hours, goals (jsonb), review_date,
-             accommodations (jsonb), confidence, created_at
+             accommodations (jsonb), confidence, summary, created_at
 student_identity_map: student_id, real_name_encrypted   -- placeholder בלבד, לא נכתב אליו בפרויקט הזה
 ```
 
