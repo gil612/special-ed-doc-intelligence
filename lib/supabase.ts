@@ -41,6 +41,23 @@ export async function updateDocumentStatus(
   if (error) throw error;
 }
 
+// See lib/sweep-stale-processing.ts for why this exists: a document stuck
+// at "processing" past a generous threshold almost certainly hit the
+// platform's background-execution ceiling, not a transient blip.
+export async function findStaleProcessingDocumentIds(
+  client: SupabaseClient,
+  thresholdMinutes: number
+): Promise<string[]> {
+  const cutoff = new Date(Date.now() - thresholdMinutes * 60_000).toISOString();
+  const { data, error } = await client
+    .from("documents")
+    .select("id")
+    .eq("status", "processing")
+    .lt("uploaded_at", cutoff);
+  if (error) throw error;
+  return (data ?? []).map((row) => row.id as string);
+}
+
 export interface DocumentRow {
   id: string;
   storage_path: string;

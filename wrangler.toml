@@ -1,7 +1,15 @@
 name = "special-ed-doc-intelligence"
-main = ".open-next/worker.js"
+main = "worker-entry.ts"
 compatibility_date = "2024-09-23"
 compatibility_flags = ["nodejs_compat"]
+
+# Safety net for lib/sweep-stale-processing.ts: waitUntil() only extends
+# background execution ~30s past the response before Cloudflare kills the
+# isolate outright, which can leave a document stuck at "processing"
+# forever with no visible error. This sweep runs every 2 minutes and marks
+# anything stuck past that threshold as "failed" instead.
+[triggers]
+crons = ["*/2 * * * *"]
 
 [assets]
 binding = "ASSETS"
