@@ -34,7 +34,6 @@ export function DocumentList({ documents }: { documents: DocumentRow[] }) {
   const filteredDocuments = applyFilters(documents, filters);
 
   async function handleDelete(doc: DocumentRow) {
-    if (!confirm(`למחוק את "${doc.original_filename}"?`)) return;
     const result = await deleteDocument(doc.id, doc.storage_path);
     if (!result.success) {
       alert(result.error);
