@@ -232,3 +232,6 @@ next-env.d.ts
 
 # Wrangler
 .wrangler/
+
+# Large external source data, not needed for reproducibility
+data/schools.xlsx
