@@ -15,7 +15,7 @@ describe("mapRowToDocument", () => {
           student_id: "STU-0001",
           school_year: 'תשפ"ז',
           disability_category: "לקות למידה",
-          placement_type: "הכלה מלאה",
+          placement_type: "הכלה מלאה" as const,
           weekly_support_hours: 4,
           goals: ["שיפור קריאה"],
           review_date: "2027-06-01",
