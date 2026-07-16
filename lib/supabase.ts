@@ -77,7 +77,7 @@ interface RawExtractionRow {
   student_id: string | null;
   school_year: string;
   disability_category: string | null;
-  placement_type: string;
+  placement_type: "הכלה מלאה" | "הכלה חלקית" | 'כיתה מיוחדת בבי"ס רגיל' | "חינוך מיוחד נפרד";
   weekly_support_hours: number | null;
   goals: string[];
   review_date: string | null;
