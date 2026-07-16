@@ -160,7 +160,7 @@ Gemini API — לא תשתית Cloudflare/Supabase.
 - [x] Upload endpoint + עיבוד אסינכרוני + Outgoing Webhook עם HMAC
 - [ ] תוצאות ב-Supabase, טבלת מיפוי זהות מופרדת
 - [x] Dashboard: רשימה + פנל + Upload UI
-- [ ] REST API עם API Key Auth
+- [x] REST API עם API Key Auth
 - [x] נבדק על מדגם מסמכים (אמיתיים/סינתטיים) — accuracy מתועד (`data/accuracy_test_report.md`, 93% exact-match על 10 תלמידים)
 - [x] חישוב עלות ל-100 מסמכים/יום (~$2-3/חודש, כמעט כולה Gemini API)
 
