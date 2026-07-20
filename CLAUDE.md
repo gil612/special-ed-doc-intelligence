@@ -23,14 +23,12 @@ live.
 
 ## Status
 
-Done: `IEPExtraction` schema + validation, PII redaction layer, and
-end-to-end extraction tested against a sample document — all in the
-Python reference scripts (`iep_schema.py`, `redaction.py`), plus the
-Supabase schema (`supabase/schema.sql`). Not yet built: the Next.js app
-itself (no `package.json` exists yet), upload endpoint, webhook,
-REST API, deploy. See the `## Status` checklist in `README.md` and the
-`## Checklist` in `SPEC.md` — keep both in sync rather than tracking
-progress in only one.
+Done: `IEPExtraction` schema + validation, PII redaction layer, Supabase
+schema, the Next.js app (upload endpoint, dashboard UI, outgoing webhook,
+REST API read endpoints), accuracy testing (93% exact-match on a 10-student
+sample), and deploy to production (Cloudflare Workers). See the `## Status`
+checklist in `README.md` and the `## Checklist` in `SPEC.md` — keep both in
+sync rather than tracking progress in only one.
 
 ## Tech stack
 
@@ -151,6 +149,11 @@ npm run deploy
 python iep_schema.py path/to/document.pdf
 ```
 
-No test suite, lint config, or CI build step exists yet beyond the Claude
-Code GitHub Action in `.github/workflows/claude.yml`. Add the actual
-commands here once a test/lint setup exists — don't invent them.
+```bash
+# run the test suite
+npm test
+```
+
+No lint config or CI build step exists yet beyond the Claude Code GitHub
+Action in `.github/workflows/claude.yml`. Add the actual commands here once
+a lint setup exists — don't invent them.
