@@ -235,3 +235,7 @@ next-env.d.ts
 
 # Large external source data, not needed for reproducibility
 data/schools.xlsx
+
+# Real personal document (not synthetic) - must never be committed to this
+# public repo
+cases/gil_2010.pdf
